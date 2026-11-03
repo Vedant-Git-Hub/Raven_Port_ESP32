@@ -84,11 +84,27 @@ static void raven_task(void* user_data)
     vTaskDelete(NULL);
 }
 
-void app_main(void)
+static void touch_task(void* user_data)
 {
+    (void)user_data;
     raven_touch_event_t event = {0};
     int previous_pressed = 0;
 
+    ESP_LOGI(TAG, "touch polling is running on CPU0 at low priority");
+    for (;;) {
+        raven_touch_poll(&event.pressed, &event.x, &event.y);
+        /* Coalesce steady touch samples if the renderer is busy, but retain
+         * every press/release transition for the button event path. */
+        if (event.pressed || event.pressed != previous_pressed) {
+            (void)xQueueSend(s_touch_events, &event, 0);
+            previous_pressed = event.pressed;
+        }
+        vTaskDelay(pdMS_TO_TICKS(8));
+    }
+}
+
+void app_main(void)
+{
     /* Keep RGB LCD setup and its ESP-IDF servicing on CPU0. */
     raven_display_init();
     raven_esp_backend_set_panel(raven_display_panel());
@@ -103,16 +119,11 @@ void app_main(void)
         vQueueDelete(s_touch_events);
         return;
     }
-
-    ESP_LOGI(TAG, "touch polling is running on CPU0");
-    for (;;) {
-        raven_touch_poll(&event.pressed, &event.x, &event.y);
-        /* Coalesce steady touch samples if the renderer is busy, but retain
-         * every press/release transition for the button event path. */
-        if (event.pressed || event.pressed != previous_pressed) {
-            (void)xQueueSend(s_touch_events, &event, 0);
-            previous_pressed = event.pressed;
-        }
-        vTaskDelay(pdMS_TO_TICKS(8));
+    /* Priority 0 is reserved for FreeRTOS's idle task. */
+    if (xTaskCreatePinnedToCore(touch_task, "touch_poll", 4096, NULL, 1,
+                                NULL, 0) != pdPASS) {
+        ESP_LOGE(TAG, "unable to start touch polling task");
+        return;
     }
+    vTaskDelete(NULL);
 }
