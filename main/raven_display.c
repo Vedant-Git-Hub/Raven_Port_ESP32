@@ -18,9 +18,9 @@ void raven_display_init(void)
     const esp_lcd_rgb_panel_config_t panel_config = {
         .clk_src = LCD_CLK_SRC_DEFAULT,
         .data_width = 16,
-        /* Baseline that renders the Raven hello screen on this board. */
-        .num_fbs = 1,
-        .psram_trans_align = 64,
+        /* Match the working LVGL direct-render configuration: Raven writes
+         * to one PSRAM buffer while RGB DMA scans the other. */
+        .num_fbs = 2,
         .hsync_gpio_num = 39,
         .vsync_gpio_num = 40,
         .de_gpio_num = 41,
@@ -45,7 +45,10 @@ void raven_display_init(void)
                 .pclk_idle_high = false,
             },
         },
-        .flags = {.fb_in_psram = true},
+        .flags = {
+            .fb_in_psram = true,
+            .refresh_on_demand = false,
+        },
     };
     const i2c_config_t i2c_config = {
         .mode = I2C_MODE_MASTER,

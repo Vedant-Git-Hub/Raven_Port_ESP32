@@ -18,7 +18,8 @@ typedef struct raven_esp_texture_t {
 
 static struct {
     esp_lcd_panel_handle_t panel;
-    uint16_t* framebuffer;
+    uint16_t* framebuffers[2];
+    uint8_t render_buffer;
     raven_esp_texture_t textures[RAVEN_ESP_MAX_TEXTURES];
 } s_backend;
 
@@ -269,8 +270,11 @@ static void backend_render_frame(const RDrawData* data, RCapture* capture)
     uint8_t r = (uint8_t)(fminf(1.0f, fmaxf(0.0f, data->clear_color[0])) * 255.0f);
     uint8_t g = (uint8_t)(fminf(1.0f, fmaxf(0.0f, data->clear_color[1])) * 255.0f);
     uint8_t b = (uint8_t)(fminf(1.0f, fmaxf(0.0f, data->clear_color[2])) * 255.0f);
-    if (!s_backend.framebuffer || data->framebuffer_width != 800 || data->framebuffer_height != 480) return;
-    framebuffer = s_backend.framebuffer;
+    if (!s_backend.framebuffers[0] || !s_backend.framebuffers[1] ||
+        data->framebuffer_width != 800 || data->framebuffer_height != 480) return;
+    /* This buffer was last presented at least 100 ms ago, while the panel
+     * scans the other buffer. */
+    framebuffer = s_backend.framebuffers[s_backend.render_buffer];
     for (i = 0; i < data->framebuffer_width * data->framebuffer_height; ++i) framebuffer[i] = rgb565(r, g, b);
     for (i = 0; i < data->command_count; ++i) {
         const RDrawCommand* command = &data->commands[i];
@@ -289,6 +293,7 @@ static void backend_render_frame(const RDrawData* data, RCapture* capture)
         capture->height = 0;
     }
     ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(s_backend.panel, 0, 0, 800, 480, framebuffer));
+    s_backend.render_buffer ^= 1;
 }
 
 static void backend_wait_idle(void)
@@ -298,9 +303,13 @@ static void backend_wait_idle(void)
 void raven_esp_backend_set_panel(esp_lcd_panel_handle_t panel)
 {
     void* framebuffer0 = NULL;
+    void* framebuffer1 = NULL;
     s_backend.panel = panel;
-    ESP_ERROR_CHECK(esp_lcd_rgb_panel_get_frame_buffer(panel, 1, &framebuffer0));
-    s_backend.framebuffer = framebuffer0;
+    ESP_ERROR_CHECK(esp_lcd_rgb_panel_get_frame_buffer(panel, 2, &framebuffer0, &framebuffer1));
+    s_backend.framebuffers[0] = framebuffer0;
+    s_backend.framebuffers[1] = framebuffer1;
+    /* The RGB driver starts scanning framebuffer 0 after initialization. */
+    s_backend.render_buffer = 1;
 }
 
 const RBackendVTable* raven_esp_backend(void)
