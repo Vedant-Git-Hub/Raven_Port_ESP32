@@ -15,7 +15,7 @@ file(GLOB RAVEN_XML_SOURCES "${RAVEN_ROOT}/src/xml/*.c")
 
 idf_component_register(
     SRCS
-        "raven_hello.c"
+        "raven_studio.c"
         "raven_display.c"
         "raven_esp_backend.c"
         "raven_esp_thread.c"
@@ -42,3 +42,7 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE
     RAVEN_PLATFORM_ESP_IDF=1
     RAVEN_EMBEDDED=1
     RVN_VERSION_STRING="0.2.0-esp32s3")
+
+# Use Raven's actual featured Studio interface, embedded as immutable firmware
+# data because the ESP32 port deliberately has no desktop filesystem watcher.
+target_add_binary_data(${COMPONENT_LIB} "${RAVEN_ROOT}/examples/studio/studio.xml" TEXT RENAME_TO studio_xml)
