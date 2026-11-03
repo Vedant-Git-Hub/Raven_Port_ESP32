@@ -261,6 +261,7 @@ static int backend_create_texture(Rid id, const RTextureDesc* desc, const void* 
     texture->desc = *desc;
     if (pixels) memcpy(texture->pixels, pixels, texture_bytes(desc));
     else memset(texture->pixels, 0, texture_bytes(desc));
+    s_backend.frame_valid = 0;
     return R_TRUE;
 }
 
@@ -275,6 +276,9 @@ static void backend_update_texture(Rid id, Ruint x, Ruint y, Ruint width, Ruint 
                (const uint8_t*)pixels + (size_t)row * width * bytes_per_pixel,
                (size_t)width * bytes_per_pixel);
     }
+    /* A glyph/image update can alter pixels even when its draw instances do
+     * not move, so the following frame must not reuse old framebuffer data. */
+    s_backend.frame_valid = 0;
 }
 
 static void backend_set_texture_filter(Rid id, RFilterType filter)
@@ -289,6 +293,24 @@ static void backend_destroy_texture(Rid id)
     if (!texture) return;
     heap_caps_free(texture->pixels);
     memset(texture, 0, sizeof(*texture));
+    s_backend.frame_valid = 0;
+}
+
+static int render_commands_match(const RDrawCommand* previous, const RDrawCommand* current, Ruint count)
+{
+    Ruint i;
+    for (i = 0; i < count; ++i) {
+        const int previous_draws = previous[i].type == R_DRAW_INSTANCES || previous[i].type == R_DRAW_SHADER;
+        const int current_draws = current[i].type == R_DRAW_INSTANCES || current[i].type == R_DRAW_SHADER;
+        /* Backdrop/callback metadata changes frequently during Raven effects.
+         * This compact backend deliberately does not render either command,
+         * so neither can invalidate RGB565 pixels on this target. */
+        if (previous_draws != current_draws) return 0;
+        if (current_draws && (previous[i].texture != current[i].texture ||
+                              previous[i].first_instance != current[i].first_instance ||
+                              previous[i].instance_count != current[i].instance_count)) return 0;
+    }
+    return 1;
 }
 
 static raven_esp_rect_t instance_bounds(const RDrawInstance* instance, const RDrawData* data)
@@ -418,8 +440,7 @@ static void backend_render_frame(const RDrawData* data, RCapture* capture)
     if (!s_backend.frame_valid || s_backend.previous_clear_color != clear_color ||
         s_backend.previous_command_count != data->command_count ||
         s_backend.previous_instance_count != data->instance_count ||
-        memcmp(s_backend.previous_commands, data->commands,
-               (size_t)data->command_count * sizeof(*data->commands)) != 0) {
+        !render_commands_match(s_backend.previous_commands, data->commands, data->command_count)) {
         full_redraw = 1;
     } else {
         for (i = 0; i < data->instance_count; ++i) {

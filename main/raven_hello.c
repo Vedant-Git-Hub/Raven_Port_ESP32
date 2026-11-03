@@ -50,7 +50,6 @@ static Rid add_card(Rid parent, const char* eyebrow, const char* value,
     add_label(body, eyebrow, 14.0f, 0.76f, 0.84f, 0.95f);
     add_label(body, value, 30.0f, 1.0f, 1.0f, 1.0f);
     add_label(body, detail, 13.0f, 0.74f, 0.80f, 0.90f);
-    Rwidget_set_transition(card, R_TRANSITION_POP, 0.08f);
     return card;
 }
 
@@ -260,6 +259,10 @@ static void raven_task(void* user_data)
 
     Rtheme_apply(R_THEME_GLASS_DARK);
     Rtheme_set_accent(0.17f, 0.62f, 1.0f);
+    /* A full software-rendered RGB frame costs too much on this panel for
+     * spring animation.  Keep the rich visual style, but make interaction
+     * states immediate so an idle display never keeps repainting itself. */
+    Rset_animations_enabled(R_FALSE);
     s_window = Rwindow_create("Raven Display Studio", RAVEN_DISPLAY_WIDTH, RAVEN_DISPLAY_HEIGHT,
                               R_WINDOW_NO_RESIZE | R_WINDOW_BORDERLESS);
     Rhost_window_set_size(s_window, RAVEN_DISPLAY_WIDTH, RAVEN_DISPLAY_HEIGHT, 1.0f);
