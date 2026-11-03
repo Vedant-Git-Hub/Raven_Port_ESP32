@@ -41,25 +41,25 @@ static Rid add_card(Rid parent, const char* eyebrow, const char* value,
 {
     Rid card = Rwidget_add_child(parent, Rwidget_create(R_WIDGET_BORDER));
     Rid body = Rwidget_add_child(card, Rwidget_create(R_WIDGET_VBOX));
-    Rborder_set_background(card, r, g, b, 0.28f);
-    Rborder_set_outline(card, 1.0f, r, g, b, 0.72f);
+    Rborder_set_background(card, r, g, b, 1.0f);
+    Rborder_set_outline(card, 2.0f, 1.0f, 1.0f, 1.0f, 0.72f);
     Rborder_set_corner_radius(card, 18.0f, 18.0f, 18.0f, 18.0f);
     Rborder_set_padding(card, 18.0f, 16.0f, 18.0f, 16.0f);
     Rborder_set_shadow(card, 10.0f, 0.0f, 4.0f);
     Rpanel_set_spacing(body, 7.0f);
-    add_label(body, eyebrow, 14.0f, 0.76f, 0.84f, 0.95f);
+    add_label(body, eyebrow, 13.0f, 0.92f, 0.95f, 1.0f);
     add_label(body, value, 30.0f, 1.0f, 1.0f, 1.0f);
-    add_label(body, detail, 13.0f, 0.74f, 0.80f, 0.90f);
+    add_label(body, detail, 13.0f, 0.92f, 0.95f, 1.0f);
     return card;
 }
 
 static void select_screen(int screen)
 {
-    static const char* const titles[] = {"Good evening, Vedant", "Display controls", "About this port"};
+    static const char* const titles[] = {"Raven playground", "Color laboratory", "System constellation"};
     static const char* const subtitles[] = {
-        "Raven UI dashboard · ESP32-S3",
-        "Tune your interface with a live preview",
-        "A compact C graphics demo for CrowPanel 7"
+        "Three screens · rich RGB565 palette · ESP32-S3",
+        "Touch the controls and watch the live status respond",
+        "CrowPanel 7 · GT911 · Raven C graphics"
     };
     int i;
     if (screen < 0 || screen > 2) return;
@@ -99,15 +99,15 @@ static void build_home_page(Rid page)
     Rid hero_body = Rwidget_add_child(hero, Rwidget_create(R_WIDGET_VBOX));
     Rid cards = Rwidget_add_child(page, Rwidget_create(R_WIDGET_HBOX));
     Rid button;
-    Rborder_set_background(hero, 0.16f, 0.31f, 0.72f, 0.92f);
-    Rborder_set_outline(hero, 1.0f, 0.34f, 0.76f, 1.0f, 0.9f);
+    Rborder_set_background(hero, 0.54f, 0.08f, 0.46f, 1.0f);
+    Rborder_set_outline(hero, 2.0f, 1.0f, 0.53f, 0.16f, 1.0f);
     Rborder_set_corner_radius(hero, 22.0f, 22.0f, 22.0f, 22.0f);
     Rborder_set_padding(hero, 24.0f, 20.0f, 24.0f, 20.0f);
     Rborder_set_shadow(hero, 14.0f, 0.0f, 5.0f);
     Rpanel_set_spacing(hero_body, 8.0f);
-    add_label(hero_body, "RAVEN / ESP32-S3", 14.0f, 0.68f, 0.89f, 1.0f);
-    add_label(hero_body, "A calmer way to build embedded UI.", 28.0f, 1.0f, 1.0f, 1.0f);
-    add_label(hero_body, "A colorful software-rendered dashboard, shaped for your CrowPanel.", 14.0f, 0.86f, 0.92f, 1.0f);
+    add_label(hero_body, "RAVEN / ESP32-S3 / 800 × 480", 14.0f, 1.0f, 0.82f, 0.37f);
+    add_label(hero_body, "Build bright things in C.", 30.0f, 1.0f, 1.0f, 1.0f);
+    add_label(hero_body, "A multi-screen touch demo made specifically for your CrowPanel.", 14.0f, 1.0f, 0.91f, 0.97f);
     button = Rwidget_add_child(hero_body, Rbutton_create("Explore controls"));
     Rbutton_set_style(button, R_BUTTON_PRIMARY);
     Rbutton_set_clicked_callback(button, on_navigation_clicked, (void*)(intptr_t)1);
@@ -115,32 +115,38 @@ static void build_home_page(Rid page)
     Rslot_set_padding(button, 0.0f, 7.0f, 0.0f, 0.0f);
     Rpanel_set_spacing(cards, 14.0f);
     Rslot_set_fill(cards, 1.0f);
-    Rslot_set_fill(add_card(cards, "RENDER ENGINE", "Raven", "CPU1 software canvas", 0.40f, 0.20f, 0.74f), 1.0f);
-    Rslot_set_fill(add_card(cards, "TOUCH LINK", "Ready", "GT911 on I2C", 0.05f, 0.55f, 0.48f), 1.0f);
-    Rslot_set_fill(add_card(cards, "DISPLAY", "800 × 480", "RGB565 color space", 0.92f, 0.36f, 0.18f), 1.0f);
+    Rslot_set_fill(add_card(cards, "RENDER ENGINE", "Raven", "CPU1 software canvas", 0.47f, 0.18f, 0.76f), 1.0f);
+    Rslot_set_fill(add_card(cards, "TOUCH LINK", "Ready", "GT911 on I2C", 0.00f, 0.58f, 0.57f), 1.0f);
+    Rslot_set_fill(add_card(cards, "DISPLAY", "800 × 480", "RGB565 color space", 0.95f, 0.32f, 0.10f), 1.0f);
 }
 
 static void build_controls_page(Rid page)
 {
+    Rid colors = Rwidget_add_child(page, Rwidget_create(R_WIDGET_HBOX));
     Rid card = Rwidget_add_child(page, Rwidget_create(R_WIDGET_BORDER));
     Rid body = Rwidget_add_child(card, Rwidget_create(R_WIDGET_VBOX));
     Rid slider;
     Rid progress;
     Rid button;
-    Rborder_set_background(card, 0.08f, 0.19f, 0.29f, 0.94f);
-    Rborder_set_outline(card, 1.0f, 0.18f, 0.72f, 0.78f, 0.8f);
+    Rpanel_set_spacing(colors, 14.0f);
+    Rslot_set_fill(colors, 1.0f);
+    Rslot_set_fill(add_card(colors, "PALETTE", "Sunset", "coral + gold", 0.94f, 0.22f, 0.28f), 1.0f);
+    Rslot_set_fill(add_card(colors, "ACCENT", "Lagoon", "teal + mint", 0.00f, 0.55f, 0.63f), 1.0f);
+    Rslot_set_fill(add_card(colors, "MODE", "Neon", "violet + pink", 0.44f, 0.15f, 0.72f), 1.0f);
+    Rborder_set_background(card, 0.11f, 0.10f, 0.20f, 1.0f);
+    Rborder_set_outline(card, 2.0f, 1.0f, 0.45f, 0.20f, 0.95f);
     Rborder_set_corner_radius(card, 20.0f, 20.0f, 20.0f, 20.0f);
     Rborder_set_padding(card, 24.0f, 22.0f, 24.0f, 22.0f);
     Rborder_set_shadow(card, 12.0f, 0.0f, 4.0f);
     Rpanel_set_spacing(body, 14.0f);
-    add_label(body, "Display mood", 26.0f, 1.0f, 1.0f, 1.0f);
-    add_label(body, "These widgets exercise Raven controls without needing external assets.", 14.0f, 0.72f, 0.84f, 0.95f);
-    add_label(body, "BRIGHTNESS PREVIEW", 13.0f, 0.37f, 0.88f, 0.84f);
+    add_label(body, "Mix your palette", 26.0f, 1.0f, 0.77f, 0.35f);
+    add_label(body, "Slider, progress and action widgets on a separate interactive screen.", 14.0f, 0.84f, 0.88f, 0.98f);
+    add_label(body, "BRIGHTNESS PREVIEW", 13.0f, 0.38f, 0.98f, 0.84f);
     slider = Rwidget_add_child(body, Rwidget_create(R_WIDGET_SLIDER));
     Rslider_set_range(slider, 0.0f, 100.0f);
     Rslider_set_value(slider, 72.0f);
     Rslider_set_changed_callback(slider, on_slider_changed, NULL);
-    add_label(body, "SYSTEM HEALTH", 13.0f, 0.98f, 0.73f, 0.34f);
+    add_label(body, "SYSTEM HEALTH", 13.0f, 1.0f, 0.48f, 0.36f);
     progress = Rwidget_add_child(body, Rwidget_create(R_WIDGET_PROGRESSBAR));
     Rprogress_bar_set_value(progress, 0.78f);
     button = Rwidget_add_child(body, Rbutton_create("Apply a fresh color profile"));
@@ -161,14 +167,15 @@ static void build_about_page(Rid page)
     Rslot_set_fill(row, 1.0f);
     Rslot_set_fill(story, 2.0f);
     Rslot_set_fill(badge, 1.0f);
-    Rborder_set_background(story, 0.14f, 0.12f, 0.30f, 0.96f);
-    Rborder_set_outline(story, 1.0f, 0.58f, 0.42f, 0.98f, 0.75f);
+    Rborder_set_background(story, 0.30f, 0.12f, 0.56f, 1.0f);
+    Rborder_set_outline(story, 2.0f, 0.92f, 0.48f, 1.0f, 0.9f);
     Rborder_set_corner_radius(story, 20.0f, 20.0f, 20.0f, 20.0f);
     Rborder_set_padding(story, 24.0f, 22.0f, 24.0f, 22.0f);
     Rpanel_set_spacing(story_body, 12.0f);
-    add_label(story_body, "Built for the curious", 27.0f, 1.0f, 1.0f, 1.0f);
-    add_label(story_body, "Raven brings retained widgets, layout and interaction to an ESP32-S3. This demo keeps the architecture small: one renderer, one touch queue and an RGB panel.", 15.0f, 0.79f, 0.78f, 0.96f);
-    Rborder_set_background(badge, 0.07f, 0.47f, 0.56f, 0.92f);
+    add_label(story_body, "A constellation of C", 27.0f, 1.0f, 0.86f, 0.40f);
+    add_label(story_body, "Raven supplies retained widgets, layout and interaction. This port adds an ESP32-S3 software renderer, GT911 touch bridge and RGB panel adapter.", 15.0f, 0.96f, 0.91f, 1.0f);
+    Rborder_set_background(badge, 0.03f, 0.62f, 0.42f, 1.0f);
+    Rborder_set_outline(badge, 2.0f, 0.70f, 1.0f, 0.78f, 0.9f);
     Rborder_set_corner_radius(badge, 20.0f, 20.0f, 20.0f, 20.0f);
     Rborder_set_padding(badge, 22.0f, 22.0f, 22.0f, 22.0f);
     Rpanel_set_spacing(badge_body, 10.0f);
@@ -187,18 +194,18 @@ static void build_interface(void)
     Rid heading = Rwidget_add_child(header, Rwidget_create(R_WIDGET_VBOX));
     Rid footer;
     int i;
-    static const char* const nav_text[] = {"Home", "Controls", "About"};
+    static const char* const nav_text[] = {"HOME", "COLOR LAB", "SYSTEM"};
 
-    Rwindow_set_clear_color(s_window, 0.025f, 0.04f, 0.10f, 1.0f);
+    Rwindow_set_clear_color(s_window, 0.055f, 0.025f, 0.12f, 1.0f);
     Rwindow_set_content(s_window, root);
     Rwidget_set_size(sidebar, 174.0f, -1.0f);
     Rslot_set_fill(content, 1.0f);
-    Rborder_set_background(sidebar, 0.055f, 0.085f, 0.18f, 0.98f);
-    Rborder_set_outline(sidebar, 1.0f, 0.18f, 0.27f, 0.48f, 0.75f);
+    Rborder_set_background(sidebar, 0.10f, 0.04f, 0.22f, 1.0f);
+    Rborder_set_outline(sidebar, 2.0f, 0.78f, 0.22f, 0.78f, 0.85f);
     Rborder_set_padding(sidebar, 16.0f, 22.0f, 16.0f, 18.0f);
     Rpanel_set_spacing(side_body, 10.0f);
-    add_label(side_body, "RAVEN", 28.0f, 0.54f, 0.86f, 1.0f);
-    add_label(side_body, "DISPLAY STUDIO", 11.0f, 0.60f, 0.67f, 0.84f);
+    add_label(side_body, "RAVEN", 28.0f, 1.0f, 0.52f, 0.20f);
+    add_label(side_body, "COLOR STUDIO", 11.0f, 0.60f, 0.96f, 0.86f);
     Rwidget_add_child(side_body, Rwidget_create(R_WIDGET_SPACER));
     for (i = 0; i < 3; ++i) {
         s_ui.navigation[i] = Rwidget_add_child(side_body, Rbutton_create(nav_text[i]));

@@ -7,4 +7,5 @@
 
 void raven_display_init(void);
 esp_lcd_panel_handle_t raven_display_panel(void);
+int raven_display_wait_for_vblank(void);
 void raven_touch_poll(int* pressed, int* x, int* y);

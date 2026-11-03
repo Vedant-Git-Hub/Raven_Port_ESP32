@@ -6,12 +6,30 @@
 #include "esp_lcd_panel_rgb.h"
 #include "esp_lcd_touch.h"
 #include "esp_lcd_touch_gt911.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #define TOUCH_I2C_NUM I2C_NUM_0
 
 static esp_lcd_panel_handle_t s_panel;
 static esp_lcd_touch_handle_t s_touch;
 static esp_lcd_panel_io_handle_t s_touch_io;
+static SemaphoreHandle_t s_vblank;
+
+/* The RGB driver calls this from its DMA ISR immediately after it has sent a
+ * frame.  The following front porch/VSYNC/back porch is the safest short
+ * window in which a single framebuffer can be modified. */
+static bool IRAM_ATTR raven_display_frame_complete(esp_lcd_panel_handle_t panel,
+                                                    const esp_lcd_rgb_panel_event_data_t* edata,
+                                                    void* user_ctx)
+{
+    BaseType_t task_woken = pdFALSE;
+    (void)panel;
+    (void)edata;
+    (void)user_ctx;
+    if (s_vblank) xSemaphoreGiveFromISR(s_vblank, &task_woken);
+    return task_woken == pdTRUE;
+}
 
 void raven_display_init(void)
 {
@@ -72,6 +90,14 @@ void raven_display_init(void)
     ESP_ERROR_CHECK(esp_lcd_new_rgb_panel(&panel_config, &s_panel));
     ESP_ERROR_CHECK(esp_lcd_panel_reset(s_panel));
     ESP_ERROR_CHECK(esp_lcd_panel_init(s_panel));
+    s_vblank = xSemaphoreCreateBinary();
+    ESP_ERROR_CHECK(s_vblank ? ESP_OK : ESP_ERR_NO_MEM);
+    {
+        const esp_lcd_rgb_panel_event_callbacks_t callbacks = {
+            .on_frame_buf_complete = raven_display_frame_complete,
+        };
+        ESP_ERROR_CHECK(esp_lcd_rgb_panel_register_event_callbacks(s_panel, &callbacks, NULL));
+    }
 
     ESP_ERROR_CHECK(i2c_param_config(TOUCH_I2C_NUM, &i2c_config));
     ESP_ERROR_CHECK(i2c_driver_install(TOUCH_I2C_NUM, i2c_config.mode, 0, 0, 0));
@@ -82,6 +108,16 @@ void raven_display_init(void)
 esp_lcd_panel_handle_t raven_display_panel(void)
 {
     return s_panel;
+}
+
+int raven_display_wait_for_vblank(void)
+{
+    if (!s_vblank) return 0;
+    /* A binary semaphore may contain the previous frame's notification.
+     * Drain it so a successful wait always means a fresh blank interval. */
+    while (xSemaphoreTake(s_vblank, 0) == pdTRUE) {
+    }
+    return xSemaphoreTake(s_vblank, pdMS_TO_TICKS(100)) == pdTRUE;
 }
 
 void raven_touch_poll(int* pressed, int* x, int* y)

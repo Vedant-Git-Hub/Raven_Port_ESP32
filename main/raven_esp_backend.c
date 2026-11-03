@@ -1,4 +1,5 @@
 #include "raven_esp_backend.h"
+#include "raven_display.h"
 
 #include "esp_heap_caps.h"
 #include "esp_check.h"
@@ -457,6 +458,9 @@ static void backend_render_frame(const RDrawData* data, RCapture* capture)
     for (i = 0; i < (Ruint)dirty_count; ++i) {
         const size_t first_byte = (size_t)dirty[i].y0 * data->framebuffer_width * sizeof(*s_backend.framebuffer);
         const size_t byte_count = (size_t)(dirty[i].y1 - dirty[i].y0) * data->framebuffer_width * sizeof(*s_backend.framebuffer);
+        /* Do not change the one framebuffer while the panel is actively
+         * scanning it.  Small damage regions fit in the RGB blank interval. */
+        (void)raven_display_wait_for_vblank();
         clear_damage(s_backend.framebuffer, data, &dirty[i], clear_color);
         render_damage(s_backend.framebuffer, data, &dirty[i]);
         /* The RGB panel streams this PSRAM framebuffer continuously.  Sync
