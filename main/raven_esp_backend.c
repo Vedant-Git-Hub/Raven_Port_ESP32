@@ -2,6 +2,7 @@
 
 #include "esp_heap_caps.h"
 #include "esp_check.h"
+#include "esp_cache.h"
 #include "esp_lcd_panel_rgb.h"
 #include "esp_log.h"
 
@@ -9,6 +10,14 @@
 #include <string.h>
 
 #define RAVEN_ESP_MAX_TEXTURES 16
+#define RAVEN_ESP_DIRTY_MAX 12
+
+typedef struct raven_esp_rect_t {
+    int x0;
+    int y0;
+    int x1;
+    int y1;
+} raven_esp_rect_t;
 
 typedef struct raven_esp_texture_t {
     Rid id;
@@ -20,6 +29,14 @@ static struct {
     esp_lcd_panel_handle_t panel;
     uint16_t* framebuffer;
     raven_esp_texture_t textures[RAVEN_ESP_MAX_TEXTURES];
+    RDrawInstance* previous_instances;
+    RDrawCommand* previous_commands;
+    Ruint previous_instance_count;
+    Ruint previous_command_count;
+    Ruint instance_capacity;
+    Ruint command_capacity;
+    uint16_t previous_clear_color;
+    int frame_valid;
 } s_backend;
 
 static const char* TAG = "raven_backend";
@@ -125,7 +142,8 @@ static uint32_t sample_texture(const raven_esp_texture_t* texture, float u, floa
 }
 
 static void draw_instance(uint16_t* framebuffer, const RDrawData* data,
-                          const RDrawInstance* instance, const raven_esp_texture_t* texture)
+                          const RDrawInstance* instance, const raven_esp_texture_t* texture,
+                          const raven_esp_rect_t* damage)
 {
     int x0 = (int)floorf(fmaxf(instance->rect[0], instance->clip[0]));
     int y0 = (int)floorf(fmaxf(instance->rect[1], instance->clip[1]));
@@ -141,6 +159,12 @@ static void draw_instance(uint16_t* framebuffer, const RDrawData* data,
     if (y0 < 0) y0 = 0;
     if (x1 > (int)data->framebuffer_width) x1 = (int)data->framebuffer_width;
     if (y1 > (int)data->framebuffer_height) y1 = (int)data->framebuffer_height;
+    if (damage) {
+        if (x0 < damage->x0) x0 = damage->x0;
+        if (y0 < damage->y0) y0 = damage->y0;
+        if (x1 > damage->x1) x1 = damage->x1;
+        if (y1 > damage->y1) y1 = damage->y1;
+    }
     if (x1 <= x0 || y1 <= y0 || width <= 0 || height <= 0) return;
 
     for (y = y0; y < y1; ++y) {
@@ -191,6 +215,11 @@ static void backend_shutdown(void)
         heap_caps_free(s_backend.textures[i].pixels);
         memset(&s_backend.textures[i], 0, sizeof(s_backend.textures[i]));
     }
+    heap_caps_free(s_backend.previous_instances);
+    heap_caps_free(s_backend.previous_commands);
+    s_backend.previous_instances = NULL;
+    s_backend.previous_commands = NULL;
+    s_backend.frame_valid = 0;
 }
 
 static int backend_create_surface(Rid window, const RNativeWindow* native, Ruint width, Ruint height)
@@ -262,16 +291,104 @@ static void backend_destroy_texture(Rid id)
     memset(texture, 0, sizeof(*texture));
 }
 
-static void backend_render_frame(const RDrawData* data, RCapture* capture)
+static raven_esp_rect_t instance_bounds(const RDrawInstance* instance, const RDrawData* data)
+{
+    raven_esp_rect_t bounds;
+    float grow = 1.0f;
+    float x0 = fminf(instance->rect[0], instance->rect[2]);
+    float y0 = fminf(instance->rect[1], instance->rect[3]);
+    float x1 = fmaxf(instance->rect[0], instance->rect[2]);
+    float y1 = fmaxf(instance->rect[1], instance->rect[3]);
+    if ((instance->flags & R_PRIM_MASK) == R_PRIM_SHADOW) grow += instance->border_width;
+    bounds.x0 = (int)floorf(fmaxf(0.0f, fmaxf(x0 - grow, instance->clip[0])));
+    bounds.y0 = (int)floorf(fmaxf(0.0f, fmaxf(y0 - grow, instance->clip[1])));
+    bounds.x1 = (int)ceilf(fminf((float)data->framebuffer_width, fminf(x1 + grow, instance->clip[2])));
+    bounds.y1 = (int)ceilf(fminf((float)data->framebuffer_height, fminf(y1 + grow, instance->clip[3])));
+    return bounds;
+}
+
+static int rect_empty(const raven_esp_rect_t* rect)
+{
+    return rect->x1 <= rect->x0 || rect->y1 <= rect->y0;
+}
+
+static int rect_overlaps(const raven_esp_rect_t* a, const raven_esp_rect_t* b)
+{
+    return a->x0 <= b->x1 && a->x1 >= b->x0 && a->y0 <= b->y1 && a->y1 >= b->y0;
+}
+
+static void dirty_add(raven_esp_rect_t* dirty, int* count, raven_esp_rect_t rect)
+{
+    int i;
+    if (rect_empty(&rect)) return;
+    for (i = 0; i < *count; ++i) {
+        if (rect_overlaps(&dirty[i], &rect)) {
+            if (rect.x0 < dirty[i].x0) dirty[i].x0 = rect.x0;
+            if (rect.y0 < dirty[i].y0) dirty[i].y0 = rect.y0;
+            if (rect.x1 > dirty[i].x1) dirty[i].x1 = rect.x1;
+            if (rect.y1 > dirty[i].y1) dirty[i].y1 = rect.y1;
+            return;
+        }
+    }
+    if (*count < RAVEN_ESP_DIRTY_MAX) {
+        dirty[(*count)++] = rect;
+    } else {
+        /* More independent changes than this small MCU backend tracks: a full
+         * redraw is both safer and cheaper than repeatedly painting overlaps. */
+        dirty[0] = (raven_esp_rect_t){0, 0, 800, 480};
+        *count = 1;
+    }
+}
+
+static int reserve_history(void** storage, Ruint* capacity, Ruint count, size_t item_size)
+{
+    void* replacement;
+    Ruint new_capacity;
+    if (count <= *capacity) return 1;
+    new_capacity = count + 32;
+    replacement = heap_caps_malloc((size_t)new_capacity * item_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!replacement) return 0;
+    heap_caps_free(*storage);
+    *storage = replacement;
+    *capacity = new_capacity;
+    return 1;
+}
+
+static int save_history(const RDrawData* data, uint16_t clear_color)
+{
+    if (!reserve_history((void**)&s_backend.previous_instances, &s_backend.instance_capacity,
+                         data->instance_count, sizeof(*data->instances)) ||
+        !reserve_history((void**)&s_backend.previous_commands, &s_backend.command_capacity,
+                         data->command_count, sizeof(*data->commands))) {
+        ESP_LOGW(TAG, "unable to allocate dirty-frame history; using a full redraw next frame");
+        s_backend.frame_valid = 0;
+        return 0;
+    }
+    memcpy(s_backend.previous_instances, data->instances,
+           (size_t)data->instance_count * sizeof(*data->instances));
+    memcpy(s_backend.previous_commands, data->commands,
+           (size_t)data->command_count * sizeof(*data->commands));
+    s_backend.previous_instance_count = data->instance_count;
+    s_backend.previous_command_count = data->command_count;
+    s_backend.previous_clear_color = clear_color;
+    s_backend.frame_valid = 1;
+    return 1;
+}
+
+static void clear_damage(uint16_t* framebuffer, const RDrawData* data,
+                         const raven_esp_rect_t* damage, uint16_t color)
+{
+    int x, y;
+    for (y = damage->y0; y < damage->y1; ++y) {
+        uint16_t* row = framebuffer + (size_t)y * data->framebuffer_width;
+        for (x = damage->x0; x < damage->x1; ++x) row[x] = color;
+    }
+}
+
+static void render_damage(uint16_t* framebuffer, const RDrawData* data,
+                          const raven_esp_rect_t* damage)
 {
     Ruint i;
-    uint16_t* framebuffer;
-    uint8_t r = (uint8_t)(fminf(1.0f, fmaxf(0.0f, data->clear_color[0])) * 255.0f);
-    uint8_t g = (uint8_t)(fminf(1.0f, fmaxf(0.0f, data->clear_color[1])) * 255.0f);
-    uint8_t b = (uint8_t)(fminf(1.0f, fmaxf(0.0f, data->clear_color[2])) * 255.0f);
-    if (!s_backend.framebuffer || data->framebuffer_width != 800 || data->framebuffer_height != 480) return;
-    framebuffer = s_backend.framebuffer;
-    for (i = 0; i < data->framebuffer_width * data->framebuffer_height; ++i) framebuffer[i] = rgb565(r, g, b);
     for (i = 0; i < data->command_count; ++i) {
         const RDrawCommand* command = &data->commands[i];
         const raven_esp_texture_t* texture = find_texture(command->texture);
@@ -280,15 +397,59 @@ static void backend_render_frame(const RDrawData* data, RCapture* capture)
         for (instance = command->first_instance;
              instance < command->first_instance + command->instance_count && instance < data->instance_count;
              ++instance) {
-            draw_instance(framebuffer, data, &data->instances[instance], texture);
+            draw_instance(framebuffer, data, &data->instances[instance], texture, damage);
         }
+    }
+}
+
+static void backend_render_frame(const RDrawData* data, RCapture* capture)
+{
+    raven_esp_rect_t dirty[RAVEN_ESP_DIRTY_MAX];
+    Ruint i;
+    int dirty_count = 0;
+    int full_redraw = 0;
+    uint16_t clear_color;
+    uint8_t r = (uint8_t)(fminf(1.0f, fmaxf(0.0f, data->clear_color[0])) * 255.0f);
+    uint8_t g = (uint8_t)(fminf(1.0f, fmaxf(0.0f, data->clear_color[1])) * 255.0f);
+    uint8_t b = (uint8_t)(fminf(1.0f, fmaxf(0.0f, data->clear_color[2])) * 255.0f);
+    if (!s_backend.framebuffer || data->framebuffer_width != 800 || data->framebuffer_height != 480) return;
+    clear_color = rgb565(r, g, b);
+
+    if (!s_backend.frame_valid || s_backend.previous_clear_color != clear_color ||
+        s_backend.previous_command_count != data->command_count ||
+        s_backend.previous_instance_count != data->instance_count ||
+        memcmp(s_backend.previous_commands, data->commands,
+               (size_t)data->command_count * sizeof(*data->commands)) != 0) {
+        full_redraw = 1;
+    } else {
+        for (i = 0; i < data->instance_count; ++i) {
+            if (memcmp(&s_backend.previous_instances[i], &data->instances[i], sizeof(*data->instances)) != 0) {
+                dirty_add(dirty, &dirty_count, instance_bounds(&s_backend.previous_instances[i], data));
+                dirty_add(dirty, &dirty_count, instance_bounds(&data->instances[i], data));
+            }
+        }
+    }
+    if (full_redraw) {
+        dirty[0] = (raven_esp_rect_t){0, 0, 800, 480};
+        dirty_count = 1;
+    }
+    for (i = 0; i < (Ruint)dirty_count; ++i) {
+        const size_t first_byte = (size_t)dirty[i].y0 * data->framebuffer_width * sizeof(*s_backend.framebuffer);
+        const size_t byte_count = (size_t)(dirty[i].y1 - dirty[i].y0) * data->framebuffer_width * sizeof(*s_backend.framebuffer);
+        clear_damage(s_backend.framebuffer, data, &dirty[i], clear_color);
+        render_damage(s_backend.framebuffer, data, &dirty[i]);
+        /* The RGB panel streams this PSRAM framebuffer continuously.  Sync
+         * the changed scanlines only; unlike draw_bitmap(), this does not
+         * relink the active LCD DMA chain while the panel is scanning it. */
+        ESP_ERROR_CHECK(esp_cache_msync((uint8_t*)s_backend.framebuffer + first_byte, byte_count,
+                                        ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_UNALIGNED));
     }
     if (capture) {
         capture->pixels = NULL;
         capture->width = 0;
         capture->height = 0;
     }
-    ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(s_backend.panel, 0, 0, 800, 480, framebuffer));
+    (void)save_history(data, clear_color);
 }
 
 static void backend_wait_idle(void)

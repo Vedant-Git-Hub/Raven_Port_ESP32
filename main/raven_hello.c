@@ -8,6 +8,7 @@
 
 #include <Raven.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 static const char* TAG = "raven_hello";
 static Rid s_window;
@@ -293,15 +294,21 @@ static void touch_task(void* user_data)
     (void)user_data;
     raven_touch_event_t event = {0};
     int previous_pressed = 0;
+    int previous_x = -1000;
+    int previous_y = -1000;
 
     ESP_LOGI(TAG, "touch polling is running on CPU0 at low priority");
     for (;;) {
         raven_touch_poll(&event.pressed, &event.x, &event.y);
-        /* Coalesce steady touch samples if the renderer is busy, but retain
-         * every press/release transition for the button event path. */
-        if (event.pressed || event.pressed != previous_pressed) {
+        /* GT911 is polled quickly, but a static finger must not create 125
+         * identical mouse-move events per second.  Preserve press/release
+         * edges and only forward meaningful motion for drags/sliders. */
+        if (event.pressed != previous_pressed ||
+            (event.pressed && (abs(event.x - previous_x) >= 4 || abs(event.y - previous_y) >= 4))) {
             (void)xQueueSend(s_touch_events, &event, 0);
             previous_pressed = event.pressed;
+            previous_x = event.x;
+            previous_y = event.y;
         }
         vTaskDelay(pdMS_TO_TICKS(8));
     }
