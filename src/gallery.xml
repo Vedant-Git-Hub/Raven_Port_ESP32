@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Raven SD Gallery: intentionally static and clean for an 800x480 HMI. -->
 <Window Title="Raven SD Gallery" Width="800" Height="480" MinWidth="800" MinHeight="480">
-    <VBox Background="#0B1020">
+    <Overlay>
+    <VBox Name="gallery" Background="#0B1020" Slot.Fill="1">
         <HBox Height="68" Spacing="12" Slot.Padding="18,14,18,10">
             <Border Background="#7C3AED" CornerRadius="12" Width="42" Height="42" Slot.VAlign="Center">
                 <Label Text="SD" TextSize="14" Color="white" Slot.HAlign="Center" Slot.VAlign="Center"/>
@@ -28,6 +29,7 @@
                     <ListView Name="files" Slot.Fill="1"/>
                     <Label Text="Tap any file to load it" TextSize="11" Color="#64748B"/>
                     <Button Name="open" Text="Open selected" Style="Primary"/>
+                    <Button Name="slideshow" Text="Play slideshow"/>
                 </VBox>
             </Border>
 
@@ -60,4 +62,8 @@
             <Label Text="ELECROW ESP32-S3" TextSize="10" Color="#64748B" Slot.VAlign="Center"/>
         </HBox>
     </VBox>
+    <!-- This is intentionally the only widget visible during playback: every
+         valid gallery image is already 800 x 480, so it fills the panel. -->
+    <Image Name="slideshow_view" Stretch="Fit" Visibility="Collapsed" Slot.Fill="1"/>
+    </Overlay>
 </Window>
