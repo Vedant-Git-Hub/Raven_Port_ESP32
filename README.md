@@ -1,10 +1,10 @@
-# Raven Studio on Elecrow 7-inch ESP32-S3 HMI
+# Raven SD Gallery on Elecrow 7-inch ESP32-S3 HMI
 
 This repository is a self-contained ESP-IDF port of the
 [Raven graphics library](https://github.com/oscar-soirey/Raven) for Elecrow's
-800×480 ESP32-S3 RGB HMI. It runs Raven's upstream **Studio** sample: a
-retained-mode interface with a node graph, timeline, colour picker, theme
-selector, and interactive controls.
+800×480 ESP32-S3 RGB HMI. It provides a polished, touch-friendly microSD BMP
+gallery: select an image from the card's file list and view it directly on the
+panel.
 
 The port uses an RGB565 software renderer that writes into the RGB panel's
 PSRAM framebuffer. GT911 touch is normalized into Raven mouse events. Raven
@@ -15,12 +15,14 @@ renders on CPU1; the low-priority touch task runs on CPU0.
 ```
 src/                    Application-only code
   main.c                ESP-IDF entry point and task setup
-  application.c         Raven Studio test application
+  application.c         SD-card gallery application
+  gallery.xml           Gallery layout embedded into firmware
   include/              Application public headers
 raven/                  Full vendored Raven source tree
 port/                   All board/OS/rendering adaptation code
   include/              Port public headers
   components/           Vendored ESP-IDF touch components
+  raven_sd.c            SPI microSD and FAT/FAT32 implementation
   Readme_port.md        Board-porting guide
 Doxyfile                Documentation configuration
 ```
@@ -32,7 +34,7 @@ Raven while replacing only the port layer. See
 
 ## Requirements
 
-- Elecrow 7-inch ESP32-S3 HMI (800×480 RGB panel, GT911 touch)
+- Elecrow 7-inch ESP32-S3 HMI (800×480 RGB panel, GT911 touch, microSD slot)
 - ESP-IDF 5.5.x; this checkout was verified with ESP-ADF's bundled ESP-IDF
   5.5.2
 - Python environment installed by ESP-IDF
@@ -59,21 +61,25 @@ export IDF_PATH=/home/vedant/esp/esp-adf/esp-idf
 
 The built application is `build/raven_hello.bin`.
 
-## Studio test application
+## SD gallery application
 
-The supplied application is an integration test rather than a static hello
-screen. After reset, it should show the Raven Studio interface and support:
+After reset, the application shows an image library on the left and a large
+preview area on the right. It uses the onboard SPI microSD interface:
 
-1. Touching a graph node to select it; its title is shown in the selection
-   status area.
-2. Dragging nodes around the graph canvas.
-3. Using the colour picker to change a selected node's tint.
-4. Pressing **Add** to create a new `Remap` node and **Frame** to fit the graph.
-5. Pressing **Play/Pause** to exercise the timeline, and selecting each theme
-   in the theme control.
+- CS GPIO10, MOSI GPIO11, SCK GPIO12, MISO GPIO13
+- FAT/FAT32-formatted microSD card
+- Root-level, uncompressed 24-bit BMP images at exactly 800×480
 
-Successful interaction verifies PSRAM framebuffer rendering, GT911 I2C touch,
-FreeRTOS task separation, XML asset embedding, Raven widget events, dirty
+Copy images to the card root, insert it before boot or use **Rescan**, then:
+
+1. Select a `.bmp` file in **Image Library**; it loads into the preview.
+2. Use **Open selected** to load the currently highlighted file again.
+3. Use **Rescan** after inserting or replacing a card; it remounts the card
+   and rebuilds the list.
+
+The status bar explains missing-card, unreadable-file, unsupported-image, and
+wrong-resolution errors. A displayed image verifies PSRAM framebuffer
+rendering, GT911 touch, FATFS, SPI microSD, Raven texture decoding, dirty
 region rendering, and vertical-blank synchronization.
 
 ## Documentation
@@ -91,8 +97,9 @@ Open `build/doxygen/html/index.html` after generation.
 ## Current scope
 
 This is a functional MCU port, not a GPU implementation. It supports Raven's
-retained widgets, layouts, text, textures, clipping, hit testing, and the
-Studio node graph. Desktop-specific features—native windows, filesystem
+retained widgets, layouts, text, textures, clipping, hit testing, list views,
+and BMP texture decoding. Desktop-specific features—native windows, filesystem
 browsing/watching, desktop font discovery, dialogs, URL launch, process
-execution, and Vulkan—are stubbed deliberately. `port/raven_esp_fs.c` is the
-place to add LittleFS/FATFS support later.
+execution, and Vulkan—are stubbed deliberately. The gallery's removable-media
+support is isolated in `port/raven_sd.c`; `port/raven_esp_fs.c` remains a safe
+stub for Raven's desktop-style filesystem APIs.

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Raven SD Gallery: intentionally static and clean for an 800x480 HMI. -->
+<Window Title="Raven SD Gallery" Width="800" Height="480" MinWidth="800" MinHeight="480">
+    <VBox Background="#0B1020">
+        <HBox Height="68" Spacing="12" Slot.Padding="18,14,18,10">
+            <Border Background="#7C3AED" CornerRadius="12" Width="42" Height="42" Slot.VAlign="Center">
+                <Label Text="SD" TextSize="14" Color="white" Slot.HAlign="Center" Slot.VAlign="Center"/>
+            </Border>
+            <VBox Spacing="1" Slot.VAlign="Center">
+                <Label Text="Raven Gallery" TextSize="22" Color="#F8FAFC"/>
+                <Label Text="MicroSD BMP viewer" TextSize="12" Color="#94A3B8"/>
+            </VBox>
+            <Spacer Slot.Fill="1"/>
+            <Border Background="#172554" CornerRadius="100" Padding="12,5" Slot.VAlign="Center">
+                <Label Name="count" Text="CARD OFFLINE" TextSize="11" Color="#93C5FD"/>
+            </Border>
+            <Button Name="rescan" Text="Rescan" Style="Primary" Slot.VAlign="Center"/>
+        </HBox>
+
+        <HBox Spacing="14" Slot.Fill="1" Slot.Padding="18,4,18,10">
+            <Border Background="#121A2D" CornerRadius="16" Padding="12" Width="242">
+                <VBox Spacing="8">
+                    <HBox>
+                        <Label Text="IMAGE LIBRARY" TextSize="12" Color="#A5B4FC" Slot.Fill="1" Slot.VAlign="Center"/>
+                        <Label Text=".BMP" TextSize="11" Color="#64748B" Slot.VAlign="Center"/>
+                    </HBox>
+                    <Separator/>
+                    <ListView Name="files" Slot.Fill="1"/>
+                    <Label Text="Tap any file to load it" TextSize="11" Color="#64748B"/>
+                    <Button Name="open" Text="Open selected" Style="Primary"/>
+                </VBox>
+            </Border>
+
+            <VBox Spacing="10" Slot.Fill="1">
+                <Border Background="#121A2D" CornerRadius="16" Padding="12" Slot.Fill="1">
+                    <VBox Spacing="9">
+                        <HBox>
+                            <VBox Spacing="1" Slot.Fill="1">
+                                <Label Text="PREVIEW" TextSize="12" Color="#A5B4FC"/>
+                                <Label Name="selected" Text="Choose a BMP from the library" TextSize="17" Color="#F8FAFC"/>
+                            </VBox>
+                            <Border Background="#0F766E" CornerRadius="100" Padding="10,4" Slot.VAlign="Center">
+                                <Label Text="24-BIT" TextSize="10" Color="#CCFBF1"/>
+                            </Border>
+                        </HBox>
+                        <Border Background="#070B16" CornerRadius="12" Clip="true" Slot.Fill="1">
+                            <Image Name="preview" Stretch="Fit" Slot.Fill="1"/>
+                        </Border>
+                    </VBox>
+                </Border>
+                <Border Background="#172554" CornerRadius="12" Padding="12,8">
+                    <Label Name="status" Text="Insert a microSD card to begin." TextSize="12" Color="#BFDBFE" Wrap="true"/>
+                </Border>
+            </VBox>
+        </HBox>
+
+        <HBox Height="28" Slot.Padding="20,0,20,8">
+            <Label Text="800 x 480  •  FAT/FAT32  •  Root folder  •  24-bit BMP" TextSize="10" Color="#64748B" Slot.VAlign="Center"/>
+            <Spacer Slot.Fill="1"/>
+            <Label Text="ELECROW ESP32-S3" TextSize="10" Color="#64748B" Slot.VAlign="Center"/>
+        </HBox>
+    </VBox>
+</Window>
