@@ -3,8 +3,8 @@
 This repository is a self-contained ESP-IDF port of the
 [Raven graphics library](https://github.com/oscar-soirey/Raven) for Elecrow's
 800×480 ESP32-S3 RGB HMI. It provides a polished, touch-friendly microSD BMP
-gallery: select an image from the card's file list and view it directly on the
-panel.
+gallery: select an image from the card's file list, preview it directly on the
+panel, or play the library as a full-screen slideshow.
 
 The port uses an RGB565 software renderer that writes into the RGB panel's
 PSRAM framebuffer. GT911 touch is normalized into Raven mouse events. Raven
@@ -74,13 +74,30 @@ Copy images to the card root, insert it before boot or use **Rescan**, then:
 
 1. Select a `.bmp` file in **Image Library**; it loads into the preview.
 2. Use **Open selected** to load the currently highlighted file again.
-3. Use **Rescan** after inserting or replacing a card; it remounts the card
+3. Tap **Play slideshow** to display the selected image (or the first image
+   when none is selected) across the complete panel. Each image remains on
+   screen for three seconds. After the final image, the application returns to
+   the gallery and leaves that last image in the preview.
+4. Use **Rescan** after inserting or replacing a card; it remounts the card
    and rebuilds the list.
 
 The status bar explains missing-card, unreadable-file, unsupported-image, and
 wrong-resolution errors. A displayed image verifies PSRAM framebuffer
 rendering, GT911 touch, FATFS, SPI microSD, Raven texture decoding, dirty
 region rendering, and vertical-blank synchronization.
+
+### Supported image format
+
+Raven's `stb_image` decoder is enabled in the ESP-IDF build. For predictable
+memory use and full-screen playback, use only uncompressed Windows BMP files
+with these properties:
+
+- 24-bit BGR pixels
+- Exactly 800 × 480 pixels
+- Stored in the card's root directory
+
+Other image formats may be decoded by Raven but are outside this application's
+tested and supported workflow.
 
 ## Documentation
 
@@ -98,7 +115,7 @@ Open `build/doxygen/html/index.html` after generation.
 
 This is a functional MCU port, not a GPU implementation. It supports Raven's
 retained widgets, layouts, text, textures, clipping, hit testing, list views,
-and BMP texture decoding. Desktop-specific features—native windows, filesystem
+timers, and BMP texture decoding. Desktop-specific features—native windows, filesystem
 browsing/watching, desktop font discovery, dialogs, URL launch, process
 execution, and Vulkan—are stubbed deliberately. The gallery's removable-media
 support is isolated in `port/raven_sd.c`; `port/raven_esp_fs.c` remains a safe

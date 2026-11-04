@@ -36,6 +36,22 @@ Keep the one-buffer model unless the replacement panel driver guarantees safe
 multi-buffer synchronization. The renderer waits for vertical blank and
 updates dirty geometry to reduce visible tearing/flicker.
 
+## Image decoding and full-screen slideshow
+
+The project application uses `Rtexture_create()` to decode BMP files from the
+FATFS-backed SD card. Raven keeps image decoding optional, therefore
+`src/CMakeLists.txt` explicitly defines `RAVEN_WITH_STB_IMAGE=1`. Keep that
+definition when moving the gallery to a new target; without it Raven reports
+every image as unsupported.
+
+The application requests 24-bit, uncompressed 800×480 BMP files. Raven
+decodes them to RGBA8, while this backend samples the resulting texture and
+writes RGB565 pixels into the panel framebuffer. The slideshow uses Raven's
+UI-thread timer API (`Rtimer_create`) at a 3-second repeating interval. It
+temporarily collapses the gallery widget and shows only an `Image` widget
+stretched to the panel bounds, then restores the gallery after the final file.
+No display timing or touch path changes are made during playback.
+
 ## Porting checklist
 
 1. Configure the display resolution and pixel format in `raven_display.h`.
@@ -48,7 +64,10 @@ updates dirty geometry to reduce visible tearing/flicker.
 5. Adapt the thread, time, filesystem, font, dialog, and removable-media hooks as needed.
 6. Add the target's components to `port/components` and update the
    `REQUIRES` list in `src/CMakeLists.txt`.
-7. Build, flash, and perform the smoke test in the root README.
+7. Enable the decoder needed by the application (for this gallery,
+   `RAVEN_WITH_STB_IMAGE=1`) in the target component's compile definitions.
+8. Build, flash, and perform the smoke test in the root README, including a
+   complete slideshow cycle.
 
 ## Rules of the boundary
 
