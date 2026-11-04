@@ -24,6 +24,11 @@ typedef struct raven_esp_texture_t {
     Rid id;
     RTextureDesc desc;
     uint8_t* pixels;
+    Ruint dirty_x0;
+    Ruint dirty_y0;
+    Ruint dirty_x1;
+    Ruint dirty_y1;
+    int dirty;
 } raven_esp_texture_t;
 
 static struct {
@@ -277,9 +282,20 @@ static void backend_update_texture(Rid id, Ruint x, Ruint y, Ruint width, Ruint 
                (const uint8_t*)pixels + (size_t)row * width * bytes_per_pixel,
                (size_t)width * bytes_per_pixel);
     }
-    /* A glyph/image update can alter pixels even when its draw instances do
-     * not move, so the following frame must not reuse old framebuffer data. */
-    s_backend.frame_valid = 0;
+    /* Font atlas uploads usually add one glyph.  Remember its texture area so
+     * the renderer can repaint just instances sampling that glyph. */
+    if (!texture->dirty) {
+        texture->dirty_x0 = x;
+        texture->dirty_y0 = y;
+        texture->dirty_x1 = x + width;
+        texture->dirty_y1 = y + height;
+        texture->dirty = 1;
+    } else {
+        if (x < texture->dirty_x0) texture->dirty_x0 = x;
+        if (y < texture->dirty_y0) texture->dirty_y0 = y;
+        if (x + width > texture->dirty_x1) texture->dirty_x1 = x + width;
+        if (y + height > texture->dirty_y1) texture->dirty_y1 = y + height;
+    }
 }
 
 static void backend_set_texture_filter(Rid id, RFilterType filter)
@@ -295,23 +311,6 @@ static void backend_destroy_texture(Rid id)
     heap_caps_free(texture->pixels);
     memset(texture, 0, sizeof(*texture));
     s_backend.frame_valid = 0;
-}
-
-static int render_commands_match(const RDrawCommand* previous, const RDrawCommand* current, Ruint count)
-{
-    Ruint i;
-    for (i = 0; i < count; ++i) {
-        const int previous_draws = previous[i].type == R_DRAW_INSTANCES || previous[i].type == R_DRAW_SHADER;
-        const int current_draws = current[i].type == R_DRAW_INSTANCES || current[i].type == R_DRAW_SHADER;
-        /* Backdrop/callback metadata changes frequently during Raven effects.
-         * This compact backend deliberately does not render either command,
-         * so neither can invalidate RGB565 pixels on this target. */
-        if (previous_draws != current_draws) return 0;
-        if (current_draws && (previous[i].texture != current[i].texture ||
-                              previous[i].first_instance != current[i].first_instance ||
-                              previous[i].instance_count != current[i].instance_count)) return 0;
-    }
-    return 1;
 }
 
 static raven_esp_rect_t instance_bounds(const RDrawInstance* instance, const RDrawData* data)
@@ -361,6 +360,21 @@ static void dirty_add(raven_esp_rect_t* dirty, int* count, raven_esp_rect_t rect
         dirty[0] = (raven_esp_rect_t){0, 0, 800, 480};
         *count = 1;
     }
+}
+
+static int texture_update_hits_instance(const raven_esp_texture_t* texture, const RDrawInstance* instance)
+{
+    float u0, v0, u1, v1;
+    if (!texture || !texture->dirty || !(instance->flags & R_INSTANCE_TEXTURED) ||
+        texture->desc.width == 0 || texture->desc.height == 0) return 0;
+    u0 = fminf(instance->uv[0], instance->uv[2]);
+    v0 = fminf(instance->uv[1], instance->uv[3]);
+    u1 = fmaxf(instance->uv[0], instance->uv[2]);
+    v1 = fmaxf(instance->uv[1], instance->uv[3]);
+    return u0 < (float)texture->dirty_x1 / texture->desc.width &&
+           u1 > (float)texture->dirty_x0 / texture->desc.width &&
+           v0 < (float)texture->dirty_y1 / texture->desc.height &&
+           v1 > (float)texture->dirty_y0 / texture->desc.height;
 }
 
 static int reserve_history(void** storage, Ruint* capacity, Ruint count, size_t item_size)
@@ -428,7 +442,7 @@ static void render_damage(uint16_t* framebuffer, const RDrawData* data,
 static void backend_render_frame(const RDrawData* data, RCapture* capture)
 {
     raven_esp_rect_t dirty[RAVEN_ESP_DIRTY_MAX];
-    Ruint i;
+    Ruint i, shared_count;
     int dirty_count = 0;
     int full_redraw = 0;
     uint16_t clear_color;
@@ -438,16 +452,35 @@ static void backend_render_frame(const RDrawData* data, RCapture* capture)
     if (!s_backend.framebuffer || data->framebuffer_width != 800 || data->framebuffer_height != 480) return;
     clear_color = rgb565(r, g, b);
 
-    if (!s_backend.frame_valid || s_backend.previous_clear_color != clear_color ||
-        s_backend.previous_command_count != data->command_count ||
-        s_backend.previous_instance_count != data->instance_count ||
-        !render_commands_match(s_backend.previous_commands, data->commands, data->command_count)) {
+    if (!s_backend.frame_valid || s_backend.previous_clear_color != clear_color) {
         full_redraw = 1;
     } else {
-        for (i = 0; i < data->instance_count; ++i) {
+        shared_count = s_backend.previous_instance_count < data->instance_count ?
+            s_backend.previous_instance_count : data->instance_count;
+        for (i = 0; i < shared_count; ++i) {
             if (memcmp(&s_backend.previous_instances[i], &data->instances[i], sizeof(*data->instances)) != 0) {
                 dirty_add(dirty, &dirty_count, instance_bounds(&s_backend.previous_instances[i], data));
                 dirty_add(dirty, &dirty_count, instance_bounds(&data->instances[i], data));
+            }
+        }
+        for (; i < s_backend.previous_instance_count; ++i) {
+            dirty_add(dirty, &dirty_count, instance_bounds(&s_backend.previous_instances[i], data));
+        }
+        for (i = shared_count; i < data->instance_count; ++i) {
+            dirty_add(dirty, &dirty_count, instance_bounds(&data->instances[i], data));
+        }
+        for (i = 0; i < data->command_count; ++i) {
+            const RDrawCommand* command = &data->commands[i];
+            raven_esp_texture_t* texture = find_texture(command->texture);
+            Ruint instance;
+            if (!texture || !texture->dirty ||
+                (command->type != R_DRAW_INSTANCES && command->type != R_DRAW_SHADER)) continue;
+            for (instance = command->first_instance;
+                 instance < command->first_instance + command->instance_count && instance < data->instance_count;
+                 ++instance) {
+                if (texture_update_hits_instance(texture, &data->instances[instance])) {
+                    dirty_add(dirty, &dirty_count, instance_bounds(&data->instances[instance], data));
+                }
             }
         }
     }
@@ -474,6 +507,7 @@ static void backend_render_frame(const RDrawData* data, RCapture* capture)
         capture->width = 0;
         capture->height = 0;
     }
+    for (i = 0; i < RAVEN_ESP_MAX_TEXTURES; ++i) s_backend.textures[i].dirty = 0;
     (void)save_history(data, clear_color);
 }
 
