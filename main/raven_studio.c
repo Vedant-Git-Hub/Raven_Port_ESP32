@@ -13,12 +13,18 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 extern const char studio_xml_start[] asm("_binary_studio_xml_start");
 extern const char studio_xml_end[] asm("_binary_studio_xml_end");
 
 static const char* TAG = "raven_studio";
 static QueueHandle_t s_touch_events;
+
+static void raven_error(RError code, RSeverity severity, const char* detail)
+{
+    ESP_LOGE(TAG, "Raven %s (%s): %s", Rerror_to_string(code), Rseverity_to_string(severity), detail);
+}
 
 typedef struct {
     int pressed;
@@ -193,6 +199,7 @@ static void raven_task(void* user_data)
 
     Rhost_platform_register(&host);
     Rbackend_register(raven_esp_backend());
+    Rerror_set_callback(raven_error);
     if (!Rinit_ex(&init)) {
         ESP_LOGE(TAG, "Raven initialization failed");
         vTaskDelete(NULL);
@@ -209,7 +216,7 @@ static void raven_task(void* user_data)
     Raction_bind("studio.play", action_play, NULL);
     Raction_bind("studio.theme", action_theme, NULL);
 
-    app.window = Rwindow_create_from_xml(studio_xml_start, (size_t)(studio_xml_end - studio_xml_start));
+    app.window = Rwindow_create_from_xml(studio_xml_start, strlen(studio_xml_start));
     if (app.window == R_INVALID_ID) {
         ESP_LOGE(TAG, "unable to load embedded Studio XML");
         Rshutdown();
