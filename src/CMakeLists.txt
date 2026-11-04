@@ -35,7 +35,7 @@ idf_component_register(
         ${RAVEN_WIDGET_SOURCES}
         ${RAVEN_WIDGETS_SOURCES}
         ${RAVEN_XML_SOURCES}
-    INCLUDE_DIRS "." "../port" "${RAVEN_ROOT}/include"
+    INCLUDE_DIRS "include" "../port/include" "${RAVEN_ROOT}/include"
     PRIV_INCLUDE_DIRS "${RAVEN_ROOT}/src" "${RAVEN_ROOT}/third_party"
     REQUIRES esp_lcd driver esp_timer esp_hw_support esp_mm espressif__esp_lcd_touch espressif__esp_lcd_touch_gt911)
 

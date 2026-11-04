@@ -1,5 +1,10 @@
-/* Board entry point.  Keep target-specific display and touch plumbing in
- * ../port so application.c remains Raven application code. */
+/**
+ * @file main.c
+ * @brief ESP-IDF entry point, task placement, and touch event forwarding.
+ *
+ * Board-specific functions are supplied by the selected implementation in
+ * @c port; application.c remains independent of those details.
+ */
 #include "application.h"
 #include "raven_display.h"
 #include "raven_esp_backend.h"
@@ -14,6 +19,7 @@
 static const char* TAG = "raven_main";
 static QueueHandle_t s_touch_events;
 
+/** @brief Poll GT911 at low priority and enqueue meaningful state changes. */
 static void touch_task(void* user_data)
 {
     raven_touch_event_t event = {0};
@@ -36,6 +42,7 @@ static void touch_task(void* user_data)
     }
 }
 
+/** @brief Initialize the board port and start the input and Raven tasks. */
 void app_main(void)
 {
     raven_display_init();

@@ -1,3 +1,7 @@
+/**
+ * @file raven_esp_fs_watch.c
+ * @brief No-op filesystem watcher for immutable embedded firmware resources.
+ */
 #include "core/fs_watch.h"
 
 /* Embedded resources are immutable while the firmware runs. */

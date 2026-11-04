@@ -1,4 +1,7 @@
-/*
+/**
+ * @file raven_esp_dialogs.c
+ * @brief Safe stubs for Raven's native desktop dialog services.
+ *
  * ESP-IDF has no native process/file dialog facility.  Keep Raven's normal
  * shutdown path intact while deliberately omitting the desktop dialog API
  * implementation from this first MCU port.

@@ -1,3 +1,7 @@
+/**
+ * @file raven_esp_font_system.c
+ * @brief Disable desktop font discovery on ESP-IDF.
+ */
 #include "render/font.h"
 
 /* ESP-IDF has no desktop font directories. Applications can still provide a

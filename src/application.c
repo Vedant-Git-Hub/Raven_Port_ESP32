@@ -1,6 +1,10 @@
-/* ESP32-S3 host for Raven's upstream examples/studio application.
- * The Studio XML and its application logic are kept intact; only the native
- * window loop is replaced with the CrowPanel RGB/touch bridge. */
+/**
+ * @file application.c
+ * @brief Raven Studio demonstration application for the embedded host.
+ *
+ * The upstream Studio XML and application behaviour are preserved. Only the
+ * native desktop loop is replaced by RGB-panel rendering and queued touch.
+ */
 #include "application.h"
 #include "raven_display.h"
 #include "raven_esp_backend.h"

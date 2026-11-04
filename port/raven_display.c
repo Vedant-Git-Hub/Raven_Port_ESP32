@@ -1,3 +1,9 @@
+/**
+ * @file raven_display.c
+ * @brief Elecrow 800x480 RGB panel and GT911 implementation.
+ *
+ * This file is the board-specific display and touch portion of the port.
+ */
 #include "raven_display.h"
 
 #include "driver/gpio.h"

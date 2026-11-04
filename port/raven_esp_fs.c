@@ -1,3 +1,10 @@
+/**
+ * @file raven_esp_fs.c
+ * @brief Safe no-filesystem implementation of Raven's desktop file services.
+ *
+ * The functions preserve Raven's API contracts while deliberately refusing
+ * persistent desktop file, directory, download, and URL operations.
+ */
 #include "core/fs.h"
 #include "Raven.h"
 

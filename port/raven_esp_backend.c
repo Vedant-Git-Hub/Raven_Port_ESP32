@@ -1,3 +1,10 @@
+/**
+ * @file raven_esp_backend.c
+ * @brief RGB565 software renderer that implements Raven's backend contract.
+ *
+ * Rendering targets the ESP LCD RGB panel's PSRAM scanout buffer and tracks
+ * dirty geometry to keep panel writes practical on the ESP32-S3.
+ */
 #include "raven_esp_backend.h"
 #include "raven_display.h"
 

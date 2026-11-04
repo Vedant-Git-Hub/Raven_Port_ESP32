@@ -1,3 +1,7 @@
+/**
+ * @file raven_esp_thread.c
+ * @brief FreeRTOS implementation of Raven's thread and synchronization hooks.
+ */
 #include "core/thread.h"
 
 #include "esp_chip_info.h"

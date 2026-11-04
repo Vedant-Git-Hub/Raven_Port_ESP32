@@ -1,0 +1,22 @@
+# Doxygen configuration for the project-owned application and ESP-IDF port.
+# The vendored Raven library and vendored ESP touch components are deliberately
+# excluded; their upstream documentation remains in raven/.
+PROJECT_NAME           = "Raven ESP32-S3 HMI Port"
+PROJECT_BRIEF          = "Raven Studio on the Elecrow 800x480 ESP32-S3 HMI"
+OUTPUT_DIRECTORY       = build/doxygen
+CREATE_SUBDIRS         = NO
+OUTPUT_LANGUAGE        = English
+INPUT                  = README.md src port
+FILE_PATTERNS          = *.c *.h *.md
+RECURSIVE              = YES
+EXCLUDE_PATTERNS       = */raven/* */port/components/* */build/*
+EXTRACT_ALL            = YES
+EXTRACT_STATIC         = YES
+EXTRACT_PRIVATE        = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_AS_ERROR          = NO
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+GENERATE_LATEX         = NO
+USE_MDFILE_AS_MAINPAGE = README.md
+QUIET                  = YES
