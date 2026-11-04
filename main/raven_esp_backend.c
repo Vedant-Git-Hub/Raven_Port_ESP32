@@ -227,10 +227,10 @@ static int backend_create_surface(Rid window, const RNativeWindow* native, Ruint
 {
     (void)window;
     (void)native;
-    if (width != 800 || height != 480) {
-        ESP_LOGE(TAG, "only the 800x480 Elecrow panel is supported (%ux%u requested)", (unsigned)width, (unsigned)height);
-        return R_FALSE;
-    }
+    /* XML examples often declare their desktop design size.  The ESP host
+     * immediately supplies the physical 800x480 size before a visible frame,
+     * so surface creation itself must not reject that initial logical size. */
+    if (width == 0 || height == 0) return R_FALSE;
     return R_TRUE;
 }
 
