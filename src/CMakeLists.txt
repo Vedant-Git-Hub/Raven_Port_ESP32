@@ -43,6 +43,9 @@ idf_component_register(
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
     RAVEN_PLATFORM_ESP_IDF=1
     RAVEN_EMBEDDED=1
+    # Raven deliberately makes stb_image optional.  The gallery uses its
+    # in-memory BMP decoder, so enable it for the ESP-IDF build as well.
+    RAVEN_WITH_STB_IMAGE=1
     RVN_VERSION_STRING="0.2.0-esp32s3")
 
 # The gallery layout is embedded as immutable firmware data. The SD card is
