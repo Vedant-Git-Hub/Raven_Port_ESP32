@@ -65,6 +65,8 @@
         <HBox Height="28" Slot.Padding="20,0,20,8">
             <Label Text="800 x 480  •  FAT/FAT32  •  Root folder  •  24-bit BMP" TextSize="10" Color="#00BFA5" Slot.VAlign="Center"/>
             <Spacer Slot.Fill="1"/>
+            <Label Text="Raven port by Vedant Bhale" TextSize="10" Color="#FDD835" Slot.VAlign="Center"/>
+            <Label Text="  •  " TextSize="10" Color="#FFFFFF" Slot.VAlign="Center"/>
             <Label Text="ELECROW ESP32-S3" TextSize="10" Color="#FF00FF" Slot.VAlign="Center"/>
         </HBox>
     </VBox>
