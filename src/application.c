@@ -497,7 +497,10 @@ void raven_application_task(void* user_data)
         .disable_render_thread = R_TRUE,
     };
     QueueHandle_t touch_events = (QueueHandle_t)user_data;
-    int previous_pressed = 0;
+    int tap_pending = 0;
+    int touch_dragging = 0;
+    int touch_start_x = 0;
+    int touch_start_y = 0;
 
     Rhost_platform_register(&host);
     Rbackend_register(raven_esp_backend());
@@ -532,7 +535,7 @@ void raven_application_task(void* user_data)
     ESP_LOGI(TAG, "Raven SD gallery running on CPU1");
     while (Rdraw_frame()) {
         raven_touch_event_t event;
-        int handled_touch = 0;
+        int visual_touch_event = 0;
         wifi_sync_status();
         wifi_sync_networks();
         if (raven_wifi_take_media_changed()) app.gallery_refresh_pending = 1;
@@ -547,11 +550,9 @@ void raven_application_task(void* user_data)
             gallery_advance_slideshow();
         }
         while (xQueueReceive(touch_events, &event, 0) == pdPASS) {
-            handled_touch = 1;
             if (app.fullscreen_touch_pending_release) {
                 if (!event.pressed) {
                     app.fullscreen_touch_pending_release = 0;
-                    previous_pressed = 0;
                 }
                 continue;
             }
@@ -561,20 +562,53 @@ void raven_application_task(void* user_data)
                                       "Back in the image library.");
                 /* Do not pass the dismissing touch through to a gallery button. */
                 app.fullscreen_touch_pending_release = 1;
-                previous_pressed = 1;
+                visual_touch_event = 1;
                 continue;
             }
-            if (event.pressed) Rhost_inject_mouse_move(app.window, event.x, event.y, 0);
-            if (event.pressed != previous_pressed) {
-                Rhost_inject_mouse_button(app.window, event.x, event.y,
-                                          R_MOUSE_LEFT, event.pressed, 0);
-                previous_pressed = event.pressed;
+
+            if (event.pressed) {
+                if (!tap_pending) {
+                    tap_pending = 1;
+                    touch_dragging = 0;
+                    touch_start_x = event.x;
+                    touch_start_y = event.y;
+                } else if (!touch_dragging &&
+                           (abs(event.x - touch_start_x) >= 12 ||
+                            abs(event.y - touch_start_y) >= 12)) {
+                    /* Keep pointer movement available for list scrolling, but
+                     * do not redraw button press feedback for a normal tap. */
+                    Rhost_inject_mouse_move(app.window, touch_start_x, touch_start_y, 0);
+                    Rhost_inject_mouse_button(app.window, touch_start_x, touch_start_y,
+                                              R_MOUSE_LEFT, 1, 0);
+                    touch_dragging = 1;
+                    visual_touch_event = 1;
+                }
+                if (touch_dragging) {
+                    Rhost_inject_mouse_move(app.window, event.x, event.y, 0);
+                    visual_touch_event = 1;
+                }
+            } else if (tap_pending) {
+                if (touch_dragging) {
+                    Rhost_inject_mouse_button(app.window, event.x, event.y,
+                                              R_MOUSE_LEFT, 0, 0);
+                } else {
+                    /* A synthetic press/release in one Raven frame executes a
+                     * button click without exposing a separate pressed frame. */
+                    Rhost_inject_mouse_move(app.window, event.x, event.y, 0);
+                    Rhost_inject_mouse_button(app.window, event.x, event.y,
+                                              R_MOUSE_LEFT, 1, 0);
+                    Rhost_inject_mouse_button(app.window, event.x, event.y,
+                                              R_MOUSE_LEFT, 0, 0);
+                }
+                tap_pending = 0;
+                touch_dragging = 0;
+                visual_touch_event = 1;
             }
         }
         /* Preserve the stable 10 FPS idle cadence, but render the next frame
          * immediately after a touch. The input task also wakes this task from
          * the idle wait, removing the former 100 ms response penalty. */
-        if (handled_touch) taskYIELD();
+        if (visual_touch_event) taskYIELD();
         else (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100));
     }
     gallery_clear_preview();
