@@ -12,6 +12,7 @@
 #include "raven_sd.h"
 
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -34,13 +35,13 @@ static struct {
     Rid selected;
     Rid count;
     Rid texture;
-    Rid slideshow_timer;
     raven_sd_file_t entries[RAVEN_SD_MAX_FILES];
     int entry_count;
     int slideshow_index;
     int slideshow_last_index;
     int slideshow_active;
     int slideshow_arm_after_draw;
+    int64_t slideshow_deadline_us;
 } app;
 
 /** @brief Log Raven failures to the ESP-IDF monitor. */
@@ -113,12 +114,10 @@ static int gallery_show_image(int index)
 /** @brief Leave full-screen playback and return to the gallery preview. */
 static void gallery_stop_slideshow(const char* message)
 {
-    if (app.slideshow_timer != R_INVALID_ID && Rtimer_is_valid(app.slideshow_timer)) {
-        Rtimer_destroy(app.slideshow_timer);
-    }
-    app.slideshow_timer = R_INVALID_ID;
     app.slideshow_active = 0;
     app.slideshow_arm_after_draw = 0;
+    app.slideshow_deadline_us = 0;
+    raven_esp_backend_set_slideshow_mode(0);
     Rimage_set_texture(app.slideshow, R_INVALID_ID);
     Rwidget_set_visibility(app.slideshow, R_COLLAPSED);
     Rwidget_set_visibility(app.gallery, R_VISIBLE);
@@ -126,11 +125,8 @@ static void gallery_stop_slideshow(const char* message)
 }
 
 /** @brief Advance the player after the current image's three-second hold. */
-static void gallery_slideshow_tick(Rid timer, void* user_data)
+static void gallery_advance_slideshow(void)
 {
-    (void)timer;
-    (void)user_data;
-    app.slideshow_timer = R_INVALID_ID;
     if (!app.slideshow_active || app.slideshow_index >= app.slideshow_last_index) {
         gallery_stop_slideshow("Slideshow complete. Back in the image library.");
         return;
@@ -171,20 +167,18 @@ static void gallery_start_slideshow(Rid button, void* user_data)
     Rwidget_set_visibility(app.slideshow, R_VISIBLE);
     app.slideshow_active = 1;
     app.slideshow_arm_after_draw = 1;
+    raven_esp_backend_set_slideshow_mode(1);
     ESP_LOGI(TAG, "slideshow started: image %d through %d", app.slideshow_index + 1,
              app.slideshow_last_index + 1);
 }
 
 /** @brief Start the three-second hold only after a new slide reaches the panel. */
-static void gallery_arm_slideshow_timer(void)
+static void gallery_mark_slideshow_presented(void)
 {
     if (!app.slideshow_arm_after_draw) return;
     app.slideshow_arm_after_draw = 0;
     if (!app.slideshow_active) return;
-    app.slideshow_timer = Rtimer_create(3.0, R_FALSE, gallery_slideshow_tick, NULL);
-    if (app.slideshow_timer == R_INVALID_ID) {
-        gallery_stop_slideshow("Could not start the slideshow timer.");
-    }
+    app.slideshow_deadline_us = esp_timer_get_time() + 3000000LL;
 }
 
 /** @brief Populate the virtual Raven list with BMP files from the card root. */
@@ -285,7 +279,6 @@ void raven_application_task(void* user_data)
     }
 
     app.texture = R_INVALID_ID;
-    app.slideshow_timer = R_INVALID_ID;
     Rtheme_apply(R_THEME_DARK);
     Rset_animations_enabled(R_FALSE);
     app.window = Rwindow_create_from_xml(gallery_xml_start, strlen(gallery_xml_start));
@@ -303,7 +296,11 @@ void raven_application_task(void* user_data)
     ESP_LOGI(TAG, "Raven SD gallery running on CPU1");
     while (Rdraw_frame()) {
         raven_touch_event_t event;
-        gallery_arm_slideshow_timer();
+        gallery_mark_slideshow_presented();
+        if (app.slideshow_active && !app.slideshow_arm_after_draw &&
+            esp_timer_get_time() >= app.slideshow_deadline_us) {
+            gallery_advance_slideshow();
+        }
         while (xQueueReceive(touch_events, &event, 0) == pdPASS) {
             if (event.pressed) Rhost_inject_mouse_move(app.window, event.x, event.y, 0);
             if (event.pressed != previous_pressed) {

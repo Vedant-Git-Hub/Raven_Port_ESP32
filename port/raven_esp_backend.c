@@ -51,6 +51,7 @@ static struct {
     Ruint command_capacity;
     uint16_t previous_clear_color;
     int frame_valid;
+    int slideshow_mode;
 } s_backend;
 
 static const char* TAG = "raven_backend";
@@ -467,11 +468,11 @@ static void render_damage(uint16_t* framebuffer, const RDrawData* data,
 /**
  * @brief Find the last texture that can safely replace a complete frame.
  *
- * During the gallery slideshow an opaque BMP is the only full-screen widget.
+ * During the gallery slideshow a BMP is the only full-screen widget.
  * Drawing it over the previous framebuffer avoids exposing a black clear pass
  * on a single-buffer RGB panel. Earlier instances are fully hidden by it.
  */
-static int find_opaque_fullscreen_image(const RDrawData* data, Ruint* first_instance)
+static int find_fullscreen_image(const RDrawData* data, Ruint* first_instance)
 {
     Ruint command_index;
     int found = 0;
@@ -479,7 +480,7 @@ static int find_opaque_fullscreen_image(const RDrawData* data, Ruint* first_inst
         const RDrawCommand* command = &data->commands[command_index];
         const raven_esp_texture_t* texture = find_texture(command->texture);
         Ruint instance_index;
-        if (command->type != R_DRAW_INSTANCES || !texture || !texture->opaque) continue;
+        if (command->type != R_DRAW_INSTANCES || !texture || !texture->pixels) continue;
         for (instance_index = command->first_instance;
              instance_index < command->first_instance + command->instance_count &&
              instance_index < data->instance_count; ++instance_index) {
@@ -552,7 +553,11 @@ static void backend_render_frame(const RDrawData* data, RCapture* capture)
     if (full_redraw) {
         dirty[0] = (raven_esp_rect_t){0, 0, 800, 480};
         dirty_count = 1;
-        replace_full_frame = find_opaque_fullscreen_image(data, &opaque_frame_start);
+        replace_full_frame = s_backend.slideshow_mode &&
+            find_fullscreen_image(data, &opaque_frame_start);
+        if (s_backend.slideshow_mode && !replace_full_frame) {
+            ESP_LOGW(TAG, "slideshow frame lacks a full-screen image; using normal redraw");
+        }
     }
     for (i = 0; i < (Ruint)dirty_count; ++i) {
         const size_t first_byte = (size_t)dirty[i].y0 * data->framebuffer_width * sizeof(*s_backend.framebuffer);
@@ -588,6 +593,11 @@ void raven_esp_backend_set_panel(esp_lcd_panel_handle_t panel)
     s_backend.panel = panel;
     ESP_ERROR_CHECK(esp_lcd_rgb_panel_get_frame_buffer(panel, 1, &framebuffer0));
     s_backend.framebuffer = framebuffer0;
+}
+
+void raven_esp_backend_set_slideshow_mode(int enabled)
+{
+    s_backend.slideshow_mode = enabled != 0;
 }
 
 const RBackendVTable* raven_esp_backend(void)

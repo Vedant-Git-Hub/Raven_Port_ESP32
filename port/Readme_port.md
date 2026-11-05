@@ -46,15 +46,15 @@ every image as unsupported.
 
 The application requests 24-bit, uncompressed 800×480 BMP files. Raven
 decodes them to RGBA8, while this backend samples the resulting texture and
-writes RGB565 pixels into the panel framebuffer. The slideshow uses Raven's
-UI-thread timer API (`Rtimer_create`) as a 3-second one-shot timer. Each timer
-is armed only after the preceding slide has reached the panel, so SD decode or
-full-frame rendering time cannot make it skip an image. It begins at the
-selected list entry (or index 0 when none is selected), temporarily collapses
-the gallery widget and shows only an `Image` widget stretched to the panel
-bounds, then restores the gallery after the final file. No display timing or
-touch path changes are made during playback. The backend detects the opaque
-full-screen slide and paints it directly over the existing framebuffer rather
+writes RGB565 pixels into the panel framebuffer. The slideshow uses an
+application-task deadline, armed for three seconds only after the preceding
+slide has reached the panel; SD decode or full-frame rendering time therefore
+cannot make it skip an image. It begins at the selected list entry (or index 0
+when none is selected), temporarily collapses the gallery widget and shows
+only an `Image` widget stretched to the panel bounds, then restores the gallery
+after the final file. No display timing or touch path changes are made during
+playback. The backend explicitly enters slideshow mode, detects the
+full-screen image, and paints it directly over the existing framebuffer rather
 than clearing the single scanout buffer first; this prevents a black flash
 between slideshow images without changing Raven's architecture.
 
