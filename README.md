@@ -35,6 +35,7 @@ Raven while replacing only the port layer. See
 ## Requirements
 
 - Elecrow 7-inch ESP32-S3 HMI (800×480 RGB panel, GT911 touch, microSD slot)
+- 4 MB flash and 8 MB PSRAM (the verified hardware configuration)
 - ESP-IDF 5.5.x; this checkout was verified with ESP-ADF's bundled ESP-IDF
   5.5.2
 - Python environment installed by ESP-IDF
@@ -60,6 +61,10 @@ export IDF_PATH=/home/vedant/esp/esp-adf/esp-idf
 ```
 
 The built application is `build/raven_hello.bin`.
+
+The project uses the HMI's full 4 MB flash configuration. Its factory-app
+partition is 0x3F0000 bytes (just under 4 MB); PSRAM is configured at 80 MHz
+and the 8 MB device is added to the ESP-IDF heap at boot.
 
 ## Desktop image converter
 
