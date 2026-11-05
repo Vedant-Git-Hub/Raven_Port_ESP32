@@ -17,6 +17,7 @@
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "freertos/task.h"
 #include "nvs_flash.h"
 
 #include <ctype.h>
@@ -37,6 +38,11 @@ static raven_wifi_status_t s_status = {
     .state = RAVEN_WIFI_IDLE,
     .message = "Enter your Wi-Fi name and password.",
 };
+static raven_wifi_network_t s_networks[RAVEN_WIFI_MAX_NETWORKS];
+static int s_network_count;
+static int s_scan_in_progress;
+static int s_scan_was_connected;
+static char s_scan_ip[sizeof(s_status.ip)];
 static int s_initialized;
 static int s_media_changed;
 
@@ -78,6 +84,59 @@ static void raven_wifi_mark_media_changed(void)
     xSemaphoreTake(s_status_lock, portMAX_DELAY);
     s_media_changed = 1;
     xSemaphoreGive(s_status_lock);
+}
+
+/** @brief Scan on a worker task so touchscreen rendering is never blocked. */
+static void raven_wifi_scan_task(void* user_data)
+{
+    static wifi_ap_record_t records[RAVEN_WIFI_MAX_NETWORKS];
+    wifi_scan_config_t config = { .show_hidden = false };
+    uint16_t available = RAVEN_WIFI_MAX_NETWORKS;
+    esp_err_t result;
+    int count = 0;
+    int was_connected;
+    char ip[sizeof(s_status.ip)];
+    int index;
+
+    (void)user_data;
+    result = esp_wifi_scan_start(&config, true);
+    if (result == ESP_OK) result = esp_wifi_scan_get_ap_records(&available, records);
+    xSemaphoreTake(s_status_lock, portMAX_DELAY);
+    was_connected = s_scan_was_connected;
+    snprintf(ip, sizeof(ip), "%s", s_scan_ip);
+    if (result == ESP_OK) {
+        for (index = 0; index < available && count < RAVEN_WIFI_MAX_NETWORKS; ++index) {
+            int duplicate = 0;
+            int prior;
+            if (!records[index].ssid[0]) continue;
+            for (prior = 0; prior < count; ++prior) {
+                if (strcmp(s_networks[prior].ssid, (const char*)records[index].ssid) == 0) {
+                    duplicate = 1;
+                    break;
+                }
+            }
+            if (duplicate) continue;
+            snprintf(s_networks[count].ssid, sizeof(s_networks[count].ssid), "%s", records[index].ssid);
+            s_networks[count].rssi = records[index].rssi;
+            ++count;
+        }
+        s_network_count = count;
+    }
+    s_scan_in_progress = 0;
+    xSemaphoreGive(s_status_lock);
+    if (result == ESP_OK) {
+        char message[96];
+        if (was_connected) {
+            snprintf(message, sizeof(message), "%d networks found. Open http://%s on your computer.", count, ip);
+            raven_wifi_set_status(RAVEN_WIFI_CONNECTED, ip, message);
+        } else {
+            snprintf(message, sizeof(message), "%d networks found. Select one, then enter its password.", count);
+            raven_wifi_set_status(RAVEN_WIFI_IDLE, NULL, message);
+        }
+    } else {
+        raven_wifi_set_status(RAVEN_WIFI_FAILED, NULL, "Wi-Fi scan failed. Tap Scan again.");
+    }
+    vTaskDelete(NULL);
 }
 
 /** @brief Produce a conservative, root-level FAT filename from URL input. */
@@ -485,6 +544,44 @@ int raven_wifi_connect(const char* ssid, const char* password)
         return 0;
     }
     return 1;
+}
+
+int raven_wifi_start_scan(void)
+{
+    int started;
+
+    if (!s_initialized) return 0;
+    xSemaphoreTake(s_status_lock, portMAX_DELAY);
+    started = !s_scan_in_progress;
+    if (started) {
+        s_scan_in_progress = 1;
+        s_scan_was_connected = s_status.state == RAVEN_WIFI_CONNECTED;
+        snprintf(s_scan_ip, sizeof(s_scan_ip), "%s", s_status.ip);
+    }
+    xSemaphoreGive(s_status_lock);
+    if (!started) return 0;
+    raven_wifi_set_status(RAVEN_WIFI_SCANNING, s_scan_was_connected ? s_scan_ip : NULL,
+                          "Scanning for nearby Wi-Fi networks...");
+    if (xTaskCreate(raven_wifi_scan_task, "wifi_scan", 4096, NULL, 3, NULL) != pdPASS) {
+        xSemaphoreTake(s_status_lock, portMAX_DELAY);
+        s_scan_in_progress = 0;
+        xSemaphoreGive(s_status_lock);
+        raven_wifi_set_status(RAVEN_WIFI_FAILED, NULL, "Could not start Wi-Fi scan.");
+        return 0;
+    }
+    return 1;
+}
+
+int raven_wifi_get_networks(raven_wifi_network_t* networks, int capacity)
+{
+    int count;
+
+    if (!networks || capacity <= 0 || !s_status_lock) return 0;
+    xSemaphoreTake(s_status_lock, portMAX_DELAY);
+    count = s_network_count < capacity ? s_network_count : capacity;
+    memcpy(networks, s_networks, (size_t)count * sizeof(*networks));
+    xSemaphoreGive(s_status_lock);
+    return count;
 }
 
 void raven_wifi_get_status(raven_wifi_status_t* status)

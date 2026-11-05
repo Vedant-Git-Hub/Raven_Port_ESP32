@@ -44,7 +44,9 @@ static struct {
     Rid wifi_password;
     Rid wifi_editing;
     Rid wifi_shift;
+    Rid wifi_networks;
     raven_sd_file_t entries[RAVEN_SD_MAX_FILES];
+    raven_wifi_network_t wifi_network_list[RAVEN_WIFI_MAX_NETWORKS];
     raven_wifi_status_t last_wifi_status;
     char wifi_ssid_text[33];
     char wifi_password_text[64];
@@ -54,7 +56,7 @@ static struct {
     int slideshow_active;
     int slideshow_arm_after_draw;
     int gallery_refresh_pending;
-    int wifi_edit_target;
+    int wifi_network_count;
     int wifi_uppercase;
     int64_t slideshow_deadline_us;
 } app;
@@ -77,11 +79,11 @@ static void wifi_refresh_fields(void)
     char password_mask[sizeof(app.wifi_password_text)];
     size_t length = strlen(app.wifi_password_text);
 
-    Rlabel_set_text(app.wifi_ssid, app.wifi_ssid_text[0] ? app.wifi_ssid_text : "Tap SSID to enter it");
+    Rlabel_set_text(app.wifi_ssid, app.wifi_ssid_text[0] ? app.wifi_ssid_text : "Select a Wi-Fi network above");
     memset(password_mask, 0, sizeof(password_mask));
     memset(password_mask, '*', length);
     Rlabel_set_text(app.wifi_password, length ? password_mask : "Tap Password to enter it");
-    Rlabel_set_text(app.wifi_editing, app.wifi_edit_target == 0 ? "Editing: Wi-Fi name" : "Editing: Password");
+    Rlabel_set_text(app.wifi_editing, "Enter password for the selected network");
     Rbutton_set_text(app.wifi_shift, app.wifi_uppercase ? "ABC" : "abc");
 }
 
@@ -100,28 +102,19 @@ static void wifi_sync_status(void)
 }
 
 /** @brief Choose which touchscreen credential field receives virtual keys. */
-static void wifi_select_ssid(Rid button, void* user_data)
-{
-    (void)button;
-    (void)user_data;
-    app.wifi_edit_target = 0;
-    wifi_refresh_fields();
-}
-
-/** @brief Choose the masked password field for virtual-keyboard entry. */
+/** @brief Keep the password field visibly active for virtual-keyboard entry. */
 static void wifi_select_password(Rid button, void* user_data)
 {
     (void)button;
     (void)user_data;
-    app.wifi_edit_target = 1;
     wifi_refresh_fields();
 }
 
 /** @brief Append one printable ASCII character to the selected Wi-Fi field. */
 static void wifi_key(Rid button, void* user_data)
 {
-    char* text = app.wifi_edit_target == 0 ? app.wifi_ssid_text : app.wifi_password_text;
-    size_t capacity = app.wifi_edit_target == 0 ? sizeof(app.wifi_ssid_text) : sizeof(app.wifi_password_text);
+    char* text = app.wifi_password_text;
+    size_t capacity = sizeof(app.wifi_password_text);
     size_t length = strlen(text);
     unsigned char character = (unsigned char)(uintptr_t)user_data;
     (void)button;
@@ -137,12 +130,50 @@ static void wifi_key(Rid button, void* user_data)
 /** @brief Delete the final virtual-keyboard character from the active field. */
 static void wifi_backspace(Rid button, void* user_data)
 {
-    char* text = app.wifi_edit_target == 0 ? app.wifi_ssid_text : app.wifi_password_text;
+    char* text = app.wifi_password_text;
     size_t length = strlen(text);
     (void)button;
     (void)user_data;
     if (length) text[length - 1U] = '\0';
     wifi_refresh_fields();
+}
+
+/** @brief Copy an asynchronous scan result into the Raven list widget. */
+static void wifi_sync_networks(void)
+{
+    raven_wifi_network_t networks[RAVEN_WIFI_MAX_NETWORKS];
+    int count = raven_wifi_get_networks(networks, RAVEN_WIFI_MAX_NETWORKS);
+    int index;
+
+    if (count == app.wifi_network_count &&
+        memcmp(networks, app.wifi_network_list, (size_t)count * sizeof(networks[0])) == 0) return;
+    memcpy(app.wifi_network_list, networks, (size_t)count * sizeof(networks[0]));
+    app.wifi_network_count = count;
+    Rlist_view_clear_items(app.wifi_networks);
+    for (index = 0; index < count; ++index) {
+        char item[48];
+        snprintf(item, sizeof(item), "%.32s  (%d dBm)", networks[index].ssid, networks[index].rssi);
+        Rlist_view_add_item(app.wifi_networks, item);
+    }
+}
+
+/** @brief Select a scanned SSID and leave only its password to be entered. */
+static void wifi_network_selected(Rid list, int index, void* user_data)
+{
+    (void)list;
+    (void)user_data;
+    if (index < 0 || index >= app.wifi_network_count) return;
+    snprintf(app.wifi_ssid_text, sizeof(app.wifi_ssid_text), "%s", app.wifi_network_list[index].ssid);
+    app.wifi_password_text[0] = '\0';
+    wifi_refresh_fields();
+}
+
+/** @brief Start or repeat a nearby-network scan from the Wi-Fi setup page. */
+static void wifi_rescan(Rid button, void* user_data)
+{
+    (void)button;
+    (void)user_data;
+    (void)raven_wifi_start_scan();
 }
 
 /** @brief Toggle upper-case text for the virtual Wi-Fi keyboard. */
@@ -186,6 +217,7 @@ static void wifi_open(Rid button, void* user_data)
     Rwidget_set_visibility(app.wifi, R_VISIBLE);
     wifi_refresh_fields();
     wifi_sync_status();
+    (void)raven_wifi_start_scan();
 }
 
 /** @brief Release the selected texture and return the preview to its empty state. */
@@ -416,14 +448,16 @@ static void gallery_connect_widgets(void)
     app.wifi_password = Rwidget_find(app.window, "wifi_password");
     app.wifi_editing = Rwidget_find(app.window, "wifi_editing");
     app.wifi_shift = Rwidget_find(app.window, "key_shift");
+    app.wifi_networks = Rwidget_find(app.window, "wifi_networks");
     Rlist_view_set_selection_changed_callback(app.files, gallery_selected, NULL);
+    Rlist_view_set_selection_changed_callback(app.wifi_networks, wifi_network_selected, NULL);
     Rbutton_set_clicked_callback(Rwidget_find(app.window, "open"), gallery_open, NULL);
     Rbutton_set_clicked_callback(Rwidget_find(app.window, "slideshow"), gallery_start_slideshow, NULL);
     Rbutton_set_clicked_callback(Rwidget_find(app.window, "rescan"), gallery_rescan, NULL);
     Rbutton_set_clicked_callback(Rwidget_find(app.window, "wifi_open"), wifi_open, NULL);
     Rbutton_set_clicked_callback(Rwidget_find(app.window, "wifi_back"), wifi_back_to_gallery, NULL);
-    Rbutton_set_clicked_callback(Rwidget_find(app.window, "wifi_edit_ssid"), wifi_select_ssid, NULL);
     Rbutton_set_clicked_callback(Rwidget_find(app.window, "wifi_edit_password"), wifi_select_password, NULL);
+    Rbutton_set_clicked_callback(Rwidget_find(app.window, "wifi_rescan"), wifi_rescan, NULL);
     Rbutton_set_clicked_callback(Rwidget_find(app.window, "wifi_connect"), wifi_connect, NULL);
     Rbutton_set_clicked_callback(Rwidget_find(app.window, "key_backspace"), wifi_backspace, NULL);
     Rbutton_set_clicked_callback(app.wifi_shift, wifi_toggle_shift, NULL);
@@ -479,6 +513,7 @@ void raven_application_task(void* user_data)
     while (Rdraw_frame()) {
         raven_touch_event_t event;
         wifi_sync_status();
+        wifi_sync_networks();
         if (raven_wifi_take_media_changed()) app.gallery_refresh_pending = 1;
         if (app.gallery_refresh_pending && !app.slideshow_active) {
             app.gallery_refresh_pending = 0;

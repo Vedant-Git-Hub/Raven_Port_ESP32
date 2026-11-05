@@ -5,10 +5,21 @@
 #pragma once
 
 #include <stddef.h>
+#include <stdint.h>
+
+/** Maximum nearby Wi-Fi networks retained for the touchscreen picker. */
+#define RAVEN_WIFI_MAX_NETWORKS 20
+
+/** One nearby Wi-Fi network presented to the gallery application. */
+typedef struct {
+    char ssid[33];
+    int8_t rssi;
+} raven_wifi_network_t;
 
 /** Current connection state presented by the touch UI. */
 typedef enum {
     RAVEN_WIFI_IDLE,
+    RAVEN_WIFI_SCANNING,
     RAVEN_WIFI_CONNECTING,
     RAVEN_WIFI_CONNECTED,
     RAVEN_WIFI_FAILED,
@@ -25,6 +36,10 @@ typedef struct {
 int raven_wifi_init(void);
 /** Begin a connection attempt using the supplied WPA/WPA2 station credentials. */
 int raven_wifi_connect(const char* ssid, const char* password);
+/** Begin an asynchronous scan for nearby visible Wi-Fi networks. */
+int raven_wifi_start_scan(void);
+/** Copy the most recently completed scan result into @p networks. */
+int raven_wifi_get_networks(raven_wifi_network_t* networks, int capacity);
 /** Copy the latest station status and IPv4 address. */
 void raven_wifi_get_status(raven_wifi_status_t* status);
 /**

@@ -92,14 +92,18 @@
             </Border>
         </HBox>
 
-        <HBox Height="38" Spacing="8">
-            <Border Background="#1565C0" CornerRadius="8" Width="104">
-                <Button Name="wifi_edit_ssid" Text="Wi-Fi name" Style="Flat"/>
-            </Border>
-            <Border Background="#10242D" BorderColor="#00BFA5" BorderWidth="1" CornerRadius="8" Padding="10,5" Slot.Fill="1">
-                <Label Name="wifi_ssid" Text="Tap Wi-Fi name to enter it" TextSize="14" Color="#FFFFFF" Slot.VAlign="Center"/>
+        <HBox Height="25" Spacing="8">
+            <Label Text="AVAILABLE WI-FI NETWORKS" TextSize="11" Color="#00BFA5" Slot.Fill="1" Slot.VAlign="Center"/>
+            <Border Background="#1565C0" CornerRadius="7" Width="78">
+                <Button Name="wifi_rescan" Text="Scan" Style="Flat"/>
             </Border>
         </HBox>
+        <Border Height="62" Background="#10242D" BorderColor="#00BFA5" BorderWidth="1" CornerRadius="8" Padding="4">
+            <ListView Name="wifi_networks" Slot.Fill="1"/>
+        </Border>
+        <Border Height="27" Background="#003D3A" BorderColor="#FDD835" BorderWidth="1" CornerRadius="8" Padding="10,3">
+            <Label Name="wifi_ssid" Text="Select a Wi-Fi network above" TextSize="12" Color="#FFFFFF" Slot.VAlign="Center"/>
+        </Border>
         <HBox Height="38" Spacing="8">
             <Border Background="#7B1FA2" CornerRadius="8" Width="104">
                 <Button Name="wifi_edit_password" Text="Password" Style="Flat"/>
@@ -109,8 +113,8 @@
             </Border>
         </HBox>
         <HBox Height="24">
-            <Label Name="wifi_editing" Text="Editing: Wi-Fi name" TextSize="11" Color="#FDD835" Slot.Fill="1" Slot.VAlign="Center"/>
-            <Label Name="wifi_status" Text="Enter your Wi-Fi name and password." TextSize="11" Color="#FFFFFF" Slot.VAlign="Center"/>
+            <Label Name="wifi_editing" Text="Enter password for selected network" TextSize="11" Color="#FDD835" Slot.Fill="1" Slot.VAlign="Center"/>
+            <Label Name="wifi_status" Text="Tap Scan to find Wi-Fi networks." TextSize="11" Color="#FFFFFF" Slot.VAlign="Center"/>
         </HBox>
 
         <Border Background="#101010" BorderColor="#1565C0" BorderWidth="1" CornerRadius="10" Padding="7,6">

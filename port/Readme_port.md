@@ -68,8 +68,9 @@ inside the 8 MB PSRAM budget.
 
 `raven_wifi.c` owns the ESP-IDF station interface and starts a port-80 HTTP
 server only after DHCP succeeds. It does not retain Wi-Fi credentials: the
-application supplies them from its touchscreen page and the station uses
-`WIFI_STORAGE_RAM`. The service is intentionally LAN-only and unauthenticated;
+application supplies the selected scanned SSID and password from its
+touchscreen page and the station uses `WIFI_STORAGE_RAM`. The service is
+intentionally LAN-only and unauthenticated;
 add authentication and TLS before exposing an equivalent port outside a trusted
 private network.
 
