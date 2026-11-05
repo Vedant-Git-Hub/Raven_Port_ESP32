@@ -110,11 +110,13 @@ preview area on the right. It uses the onboard SPI microSD interface:
 Copy images to the card root, insert it before boot or use **Rescan**, then:
 
 1. Select a `.bmp` file in **Image Library**; it loads into the preview.
-2. Use **Open selected** to load the currently highlighted file again.
+2. Use **Open selected** to show the currently highlighted file full-screen;
+   touch anywhere on the display to return to the library.
 3. Tap **Play slideshow** to display the selected image (or the first image
    when none is selected) across the complete panel. Each image remains on
    screen for three seconds. After the final image, the application returns to
-   the gallery and leaves that last image in the preview.
+   the gallery and leaves that last image in the preview. Touching anywhere
+   during a slideshow stops it immediately and returns to the gallery.
 4. Use **Rescan** after inserting or replacing a card; it remounts the card
    and rebuilds the list.
 

@@ -145,8 +145,8 @@
         <Label Text="Wi-Fi stays active when you return to the gallery. Browser uploads refresh the image list automatically." TextSize="10" Color="#FFFFFF" Slot.VAlign="Center"/>
     </VBox>
     </Border>
-    <!-- This is intentionally the only widget visible during playback: every
-         valid gallery image is already 800 x 480, so it fills the panel. -->
+    <!-- This is intentionally the only widget visible during full-screen view
+         or playback: every valid gallery image is already 800 x 480. -->
     <Image Name="slideshow_view" Stretch="Fit" Visibility="Collapsed" Slot.Fill="1"/>
     </Overlay>
 </Window>

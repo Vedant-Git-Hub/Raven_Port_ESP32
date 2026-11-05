@@ -54,7 +54,9 @@ static struct {
     int slideshow_index;
     int slideshow_last_index;
     int slideshow_active;
+    int fullscreen_active;
     int slideshow_arm_after_draw;
+    int fullscreen_touch_pending_release;
     int gallery_refresh_pending;
     int wifi_network_count;
     int wifi_uppercase;
@@ -283,10 +285,11 @@ static int gallery_show_image(int index)
     return 1;
 }
 
-/** @brief Leave full-screen playback and return to the gallery preview. */
-static void gallery_stop_slideshow(const char* message)
+/** @brief Leave full-screen image display and return to the gallery preview. */
+static void gallery_stop_fullscreen(const char* message)
 {
     app.slideshow_active = 0;
+    app.fullscreen_active = 0;
     app.slideshow_arm_after_draw = 0;
     app.slideshow_deadline_us = 0;
     raven_esp_backend_set_slideshow_mode(0);
@@ -294,6 +297,12 @@ static void gallery_stop_slideshow(const char* message)
     Rwidget_set_visibility(app.slideshow, R_COLLAPSED);
     Rwidget_set_visibility(app.gallery, R_VISIBLE);
     if (message) gallery_status(message);
+}
+
+/** @brief Leave full-screen slideshow playback and return to the image library. */
+static void gallery_stop_slideshow(const char* message)
+{
+    gallery_stop_fullscreen(message);
 }
 
 /** @brief Advance the player after the current image's three-second hold. */
@@ -337,6 +346,7 @@ static void gallery_start_slideshow(Rid button, void* user_data)
     Rimage_set_stretch(app.slideshow, R_STRETCH_FIT);
     Rwidget_set_visibility(app.gallery, R_COLLAPSED);
     Rwidget_set_visibility(app.slideshow, R_VISIBLE);
+    app.fullscreen_active = 1;
     app.slideshow_active = 1;
     app.slideshow_arm_after_draw = 1;
     raven_esp_backend_set_slideshow_mode(1);
@@ -391,7 +401,7 @@ static void gallery_selected(Rid list, int index, void* user_data)
     gallery_show_image(index);
 }
 
-/** @brief Explicitly open the selected image from the touch-friendly button. */
+/** @brief Open the selected image full-screen until the next panel touch. */
 static void gallery_open(Rid button, void* user_data)
 {
     int selected;
@@ -402,7 +412,17 @@ static void gallery_open(Rid button, void* user_data)
         gallery_status("Select a BMP file in the library first.");
         return;
     }
-    gallery_show_image(selected);
+    if (!gallery_show_image(selected)) return;
+    Rimage_set_texture(app.slideshow, app.texture);
+    Rimage_set_stretch(app.slideshow, R_STRETCH_FIT);
+    Rwidget_set_visibility(app.gallery, R_COLLAPSED);
+    Rwidget_set_visibility(app.slideshow, R_VISIBLE);
+    app.fullscreen_active = 1;
+    app.slideshow_active = 0;
+    app.slideshow_arm_after_draw = 0;
+    app.slideshow_deadline_us = 0;
+    raven_esp_backend_set_slideshow_mode(1);
+    ESP_LOGI(TAG, "full-screen image opened: %s", app.entries[selected].name);
 }
 
 /** @brief Remount and rescan media so card changes do not require reset. */
@@ -515,7 +535,7 @@ void raven_application_task(void* user_data)
         wifi_sync_status();
         wifi_sync_networks();
         if (raven_wifi_take_media_changed()) app.gallery_refresh_pending = 1;
-        if (app.gallery_refresh_pending && !app.slideshow_active) {
+        if (app.gallery_refresh_pending && !app.fullscreen_active) {
             app.gallery_refresh_pending = 0;
             gallery_scan(0);
             gallery_status("SD card updated over Wi-Fi.");
@@ -526,6 +546,22 @@ void raven_application_task(void* user_data)
             gallery_advance_slideshow();
         }
         while (xQueueReceive(touch_events, &event, 0) == pdPASS) {
+            if (app.fullscreen_touch_pending_release) {
+                if (!event.pressed) {
+                    app.fullscreen_touch_pending_release = 0;
+                    previous_pressed = 0;
+                }
+                continue;
+            }
+            if (app.fullscreen_active && event.pressed) {
+                gallery_stop_fullscreen(app.slideshow_active ?
+                                      "Slideshow stopped. Back in the image library." :
+                                      "Back in the image library.");
+                /* Do not pass the dismissing touch through to a gallery button. */
+                app.fullscreen_touch_pending_release = 1;
+                previous_pressed = 1;
+                continue;
+            }
             if (event.pressed) Rhost_inject_mouse_move(app.window, event.x, event.y, 0);
             if (event.pressed != previous_pressed) {
                 Rhost_inject_mouse_button(app.window, event.x, event.y,
