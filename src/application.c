@@ -532,6 +532,7 @@ void raven_application_task(void* user_data)
     ESP_LOGI(TAG, "Raven SD gallery running on CPU1");
     while (Rdraw_frame()) {
         raven_touch_event_t event;
+        int handled_touch = 0;
         wifi_sync_status();
         wifi_sync_networks();
         if (raven_wifi_take_media_changed()) app.gallery_refresh_pending = 1;
@@ -546,6 +547,7 @@ void raven_application_task(void* user_data)
             gallery_advance_slideshow();
         }
         while (xQueueReceive(touch_events, &event, 0) == pdPASS) {
+            handled_touch = 1;
             if (app.fullscreen_touch_pending_release) {
                 if (!event.pressed) {
                     app.fullscreen_touch_pending_release = 0;
@@ -569,7 +571,11 @@ void raven_application_task(void* user_data)
                 previous_pressed = event.pressed;
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(100));
+        /* Preserve the stable 10 FPS idle cadence, but render the next frame
+         * immediately after a touch. The input task also wakes this task from
+         * the idle wait, removing the former 100 ms response penalty. */
+        if (handled_touch) taskYIELD();
+        else (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100));
     }
     gallery_clear_preview();
     raven_sd_unmount();

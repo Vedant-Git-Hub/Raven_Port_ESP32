@@ -13,5 +13,10 @@ void raven_display_init(void);
 esp_lcd_panel_handle_t raven_display_panel(void);
 /** @brief Wait for a fresh vertical blank interval; returns non-zero on success. */
 int raven_display_wait_for_vblank(void);
-/** @brief Sample the GT911 touch controller and return its primary contact. */
+/**
+ * @brief Poll the GT911 controller and return its primary contact.
+ *
+ * GPIO38 is reserved for the board's GT911 reset/address path, not used as an
+ * ESP32 interrupt input by this port.
+ */
 void raven_touch_poll(int* pressed, int* x, int* y);
