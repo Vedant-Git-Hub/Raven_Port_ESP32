@@ -38,6 +38,9 @@ static struct {
     raven_sd_file_t entries[RAVEN_SD_MAX_FILES];
     int entry_count;
     int slideshow_index;
+    int slideshow_last_index;
+    int slideshow_active;
+    int slideshow_arm_after_draw;
 } app;
 
 /** @brief Log Raven failures to the ESP-IDF monitor. */
@@ -114,27 +117,37 @@ static void gallery_stop_slideshow(const char* message)
         Rtimer_destroy(app.slideshow_timer);
     }
     app.slideshow_timer = R_INVALID_ID;
+    app.slideshow_active = 0;
+    app.slideshow_arm_after_draw = 0;
     Rimage_set_texture(app.slideshow, R_INVALID_ID);
     Rwidget_set_visibility(app.slideshow, R_COLLAPSED);
     Rwidget_set_visibility(app.gallery, R_VISIBLE);
     if (message) gallery_status(message);
 }
 
-/** @brief Advance the full-screen player or return after its final image. */
+/** @brief Advance the player after the current image's three-second hold. */
 static void gallery_slideshow_tick(Rid timer, void* user_data)
 {
     (void)timer;
     (void)user_data;
-    ++app.slideshow_index;
-    if (app.slideshow_index >= app.entry_count) {
+    app.slideshow_timer = R_INVALID_ID;
+    if (!app.slideshow_active || app.slideshow_index >= app.slideshow_last_index) {
         gallery_stop_slideshow("Slideshow complete. Back in the image library.");
         return;
     }
+    ++app.slideshow_index;
     if (!gallery_show_image(app.slideshow_index)) {
         gallery_stop_slideshow("Slideshow stopped because an image could not be loaded.");
         return;
     }
     Rimage_set_texture(app.slideshow, app.texture);
+    /* The application loop arms the next one-shot timer only after this
+     * replacement texture has completed a full panel render.  A repeating
+     * timer starts counting during SD decode/render work and can therefore
+     * visibly skip slides on this MCU. */
+    app.slideshow_arm_after_draw = 1;
+    ESP_LOGI(TAG, "slideshow presenting %d of %d", app.slideshow_index + 1,
+             app.slideshow_last_index + 1);
 }
 
 /** @brief Start a three-second-per-image, panel-filling gallery slideshow. */
@@ -149,13 +162,26 @@ static void gallery_start_slideshow(Rid button, void* user_data)
     }
     selected = Rlist_view_get_selected(app.files);
     app.slideshow_index = selected >= 0 ? selected : 0;
+    app.slideshow_last_index = app.entry_count - 1;
     if (!gallery_show_image(app.slideshow_index)) return;
 
     Rimage_set_texture(app.slideshow, app.texture);
     Rimage_set_stretch(app.slideshow, R_STRETCH_FIT);
     Rwidget_set_visibility(app.gallery, R_COLLAPSED);
     Rwidget_set_visibility(app.slideshow, R_VISIBLE);
-    app.slideshow_timer = Rtimer_create(3.0, R_TRUE, gallery_slideshow_tick, NULL);
+    app.slideshow_active = 1;
+    app.slideshow_arm_after_draw = 1;
+    ESP_LOGI(TAG, "slideshow started: image %d through %d", app.slideshow_index + 1,
+             app.slideshow_last_index + 1);
+}
+
+/** @brief Start the three-second hold only after a new slide reaches the panel. */
+static void gallery_arm_slideshow_timer(void)
+{
+    if (!app.slideshow_arm_after_draw) return;
+    app.slideshow_arm_after_draw = 0;
+    if (!app.slideshow_active) return;
+    app.slideshow_timer = Rtimer_create(3.0, R_FALSE, gallery_slideshow_tick, NULL);
     if (app.slideshow_timer == R_INVALID_ID) {
         gallery_stop_slideshow("Could not start the slideshow timer.");
     }
@@ -277,6 +303,7 @@ void raven_application_task(void* user_data)
     ESP_LOGI(TAG, "Raven SD gallery running on CPU1");
     while (Rdraw_frame()) {
         raven_touch_event_t event;
+        gallery_arm_slideshow_timer();
         while (xQueueReceive(touch_events, &event, 0) == pdPASS) {
             if (event.pressed) Rhost_inject_mouse_move(app.window, event.x, event.y, 0);
             if (event.pressed != previous_pressed) {
