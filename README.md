@@ -99,6 +99,11 @@ with these properties:
 Other image formats may be decoded by Raven but are outside this application's
 tested and supported workflow.
 
+For the 8 MB PSRAM target, full-screen opaque gallery images are compacted by
+the ESP32-S3 backend from Raven's RGBA8 source into RGB565 texture storage.
+This uses 768 KB per displayed 800×480 image and allows every slide to load
+reliably without exhausting PSRAM.
+
 ## Documentation
 
 Doxygen documents all project-authored source under `src` and `port`. The

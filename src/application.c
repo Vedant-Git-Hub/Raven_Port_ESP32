@@ -71,6 +71,7 @@ static void gallery_clear_preview(void)
 static int gallery_show_image(int index)
 {
     uint8_t* file_data;
+    uint8_t* decoded_pixels;
     size_t file_size;
     Rid texture;
     int width = 0;
@@ -84,22 +85,29 @@ static int gallery_show_image(int index)
         gallery_status("Could not read this file. Use a FAT/FAT32 card and a 24-bit BMP.");
         return 0;
     }
-    texture = Rtexture_create((const char*)file_data, file_size);
+    /* Decode before releasing the displayed texture.  The old slide remains
+     * visible while the SD read and decode run, then its PSRAM is available
+     * before Raven creates the replacement texture. */
+    decoded_pixels = Rimage_decode(file_data, file_size, &width, &height);
     raven_sd_free(file_data);
-    if (texture == R_INVALID_ID) {
+    if (!decoded_pixels) {
         gallery_status("Unsupported BMP. Use an uncompressed 24-bit 800 x 480 BMP.");
         return 0;
     }
-    Rtexture_get_size(texture, &width, &height);
     if (width != RAVEN_DISPLAY_WIDTH || height != RAVEN_DISPLAY_HEIGHT) {
         snprintf(detail, sizeof(detail), "%s is %d x %d. Expected 800 x 480.",
                  app.entries[index].name, width, height);
-        Rtexture_destroy(texture);
+        Rpixels_free(decoded_pixels);
         gallery_status(detail);
         return 0;
     }
-
     gallery_clear_preview();
+    texture = Rtexture_create_from_pixels(decoded_pixels, width, height);
+    Rpixels_free(decoded_pixels);
+    if (texture == R_INVALID_ID) {
+        gallery_status("Could not allocate this BMP in PSRAM.");
+        return 0;
+    }
     app.texture = texture;
     Rtexture_set_filter(texture, R_FILTER_LINEAR);
     Rimage_set_texture(app.preview, texture);

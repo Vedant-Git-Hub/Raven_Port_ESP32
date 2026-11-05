@@ -56,7 +56,12 @@ after the final file. No display timing or touch path changes are made during
 playback. The backend explicitly enters slideshow mode, detects the
 full-screen image, and paints it directly over the existing framebuffer rather
 than clearing the single scanout buffer first; this prevents a black flash
-between slideshow images without changing Raven's architecture.
+between slideshow images without changing Raven's architecture. Opaque images
+larger than 256×256 are stored by the backend as RGB565 (768 KB at 800×480)
+rather than Raven's source RGBA8 representation (1.536 MB). The gallery also
+decodes the next file before releasing the prior slide, then frees that slide
+before creating the replacement texture. This keeps all slideshow allocations
+inside the 8 MB PSRAM budget.
 
 ## Porting checklist
 

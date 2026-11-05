@@ -37,6 +37,7 @@ typedef struct raven_esp_texture_t {
     Ruint dirty_y1;
     int dirty;
     int opaque;
+    int rgb565_storage;
 } raven_esp_texture_t;
 
 static struct {
@@ -59,6 +60,14 @@ static const char* TAG = "raven_backend";
 static size_t texture_bytes(const RTextureDesc* desc)
 {
     return (size_t)desc->width * desc->height * (desc->format == R_TEXTURE_ALPHA8 ? 1 : 4);
+}
+
+/** @brief Return the storage required by one backend texture. */
+static size_t texture_storage_bytes(const RTextureDesc* desc, int rgb565_storage)
+{
+    const size_t pixels = (size_t)desc->width * desc->height;
+    if (desc->format == R_TEXTURE_ALPHA8) return pixels;
+    return pixels * (rgb565_storage ? 2U : 4U);
 }
 
 /** @brief Return whether every source RGBA pixel is fully opaque. */
@@ -148,6 +157,7 @@ static uint32_t sample_texture(const raven_esp_texture_t* texture, float u, floa
 {
     uint32_t x, y;
     const uint8_t* source;
+    size_t pixel_index;
     if (!texture || !texture->pixels || texture->desc.width == 0 || texture->desc.height == 0) {
         *alpha_only = 0;
         return 0;
@@ -156,11 +166,17 @@ static uint32_t sample_texture(const raven_esp_texture_t* texture, float u, floa
     v = fminf(1.0f, fmaxf(0.0f, v));
     x = (uint32_t)(u * (texture->desc.width - 1));
     y = (uint32_t)(v * (texture->desc.height - 1));
-    source = texture->pixels + ((size_t)y * texture->desc.width + x) *
-        (texture->desc.format == R_TEXTURE_ALPHA8 ? 1 : 4);
+    pixel_index = (size_t)y * texture->desc.width + x;
+    source = texture->pixels + pixel_index * (texture->desc.format == R_TEXTURE_ALPHA8 ? 1 : 4);
     if (texture->desc.format == R_TEXTURE_ALPHA8) {
         *alpha_only = *source;
         return 0xffffffffu;
+    }
+    if (texture->rgb565_storage) {
+        uint8_t r, g, b;
+        unpack565(((const uint16_t*)texture->pixels)[pixel_index], &r, &g, &b);
+        *alpha_only = 0xff;
+        return (uint32_t)r | ((uint32_t)g << 8) | ((uint32_t)b << 16) | 0xff000000u;
     }
     *alpha_only = source[3];
     return (uint32_t)source[0] | ((uint32_t)source[1] << 8) |
@@ -267,6 +283,7 @@ static void backend_destroy_surface(Rid window)
 static int backend_create_texture(Rid id, const RTextureDesc* desc, const void* pixels)
 {
     int i;
+    size_t pixel_count;
     raven_esp_texture_t* texture = find_texture(id);
     if (!texture) {
         for (i = 0; i < RAVEN_ESP_MAX_TEXTURES; ++i) {
@@ -279,16 +296,36 @@ static int backend_create_texture(Rid id, const RTextureDesc* desc, const void* 
     }
     if (!texture) return R_FALSE;
     heap_caps_free(texture->pixels);
-    texture->pixels = allocate_texture(texture_bytes(desc));
+    pixel_count = (size_t)desc->width * desc->height;
+    texture->opaque = desc->format != R_TEXTURE_ALPHA8 &&
+        rgba_pixels_are_opaque((const uint8_t*)pixels, pixel_count);
+    /* Gallery BMPs are opaque.  Keeping their samples as RGB565 halves each
+     * 800x480 texture from 1.536 MB to 768 KB, leaving enough PSRAM for the
+     * decoded next image and preventing failed slide allocations. */
+    texture->rgb565_storage = texture->opaque && pixel_count > (size_t)256 * 256;
+    texture->pixels = allocate_texture(texture_storage_bytes(desc, texture->rgb565_storage));
     if (!texture->pixels) {
         memset(texture, 0, sizeof(*texture));
         return R_FALSE;
     }
     texture->desc = *desc;
-    texture->opaque = desc->format != R_TEXTURE_ALPHA8 &&
-        rgba_pixels_are_opaque((const uint8_t*)pixels, (size_t)desc->width * desc->height);
-    if (pixels) memcpy(texture->pixels, pixels, texture_bytes(desc));
-    else memset(texture->pixels, 0, texture_bytes(desc));
+    if (texture->rgb565_storage) {
+        ESP_LOGI(TAG, "stored %ux%u opaque texture as RGB565 (%u bytes)",
+                 (unsigned)desc->width, (unsigned)desc->height,
+                 (unsigned)texture_storage_bytes(desc, R_TRUE));
+    }
+    if (pixels && texture->rgb565_storage) {
+        const uint8_t* source = pixels;
+        uint16_t* destination = (uint16_t*)texture->pixels;
+        size_t index;
+        for (index = 0; index < pixel_count; ++index) {
+            destination[index] = rgb565(source[index * 4], source[index * 4 + 1], source[index * 4 + 2]);
+        }
+    } else if (pixels) {
+        memcpy(texture->pixels, pixels, texture_bytes(desc));
+    } else {
+        memset(texture->pixels, 0, texture_storage_bytes(desc, texture->rgb565_storage));
+    }
     s_backend.frame_valid = 0;
     return R_TRUE;
 }
@@ -297,15 +334,25 @@ static void backend_update_texture(Rid id, Ruint x, Ruint y, Ruint width, Ruint 
 {
     Ruint row;
     raven_esp_texture_t* texture = find_texture(id);
-    const size_t bytes_per_pixel = texture && texture->desc.format == R_TEXTURE_ALPHA8 ? 1 : 4;
     if (!texture || !pixels || x + width > texture->desc.width || y + height > texture->desc.height) return;
     /* An arbitrary update can introduce transparency, so the fast opaque
      * presentation path is valid only until a full opaque texture is made. */
     if (texture->desc.format != R_TEXTURE_ALPHA8) texture->opaque = 0;
     for (row = 0; row < height; ++row) {
-        memcpy(texture->pixels + ((size_t)(y + row) * texture->desc.width + x) * bytes_per_pixel,
-               (const uint8_t*)pixels + (size_t)row * width * bytes_per_pixel,
-               (size_t)width * bytes_per_pixel);
+        if (texture->rgb565_storage) {
+            const uint8_t* source = (const uint8_t*)pixels + (size_t)row * width * 4;
+            uint16_t* destination = (uint16_t*)texture->pixels +
+                (size_t)(y + row) * texture->desc.width + x;
+            Ruint column;
+            for (column = 0; column < width; ++column) {
+                destination[column] = rgb565(source[column * 4], source[column * 4 + 1], source[column * 4 + 2]);
+            }
+        } else {
+            const size_t bytes_per_pixel = texture->desc.format == R_TEXTURE_ALPHA8 ? 1 : 4;
+            memcpy(texture->pixels + ((size_t)(y + row) * texture->desc.width + x) * bytes_per_pixel,
+                   (const uint8_t*)pixels + (size_t)row * width * bytes_per_pixel,
+                   (size_t)width * bytes_per_pixel);
+        }
     }
     /* Font atlas uploads usually add one glyph.  Remember its texture area so
      * the renderer can repaint just instances sampling that glyph. */
