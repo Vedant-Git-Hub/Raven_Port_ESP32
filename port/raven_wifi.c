@@ -303,7 +303,8 @@ static esp_err_t raven_http_upload(httpd_req_t* request)
         return httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "SD card unavailable");
     }
     snprintf(path, sizeof(path), "%s/%s", RAVEN_SD_MOUNT_POINT, name);
-    snprintf(temporary, sizeof(temporary), "%s/.raven-upload.tmp", RAVEN_SD_MOUNT_POINT);
+    /* FATFS treats dot-prefixed names specially; retain a valid 8.3 temp file. */
+    snprintf(temporary, sizeof(temporary), "%s/RAVENUPL.TMP", RAVEN_SD_MOUNT_POINT);
     unlink(temporary);
     file = fopen(temporary, "wb");
     if (!file) {
