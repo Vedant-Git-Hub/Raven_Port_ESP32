@@ -159,7 +159,8 @@ http://192.168.1.42
 
 The compact built-in page lists regular files in the SD-card root and supports:
 
-- Uploading files from the computer (up to 4 MB per transfer)
+- Uploading files from the computer (up to 4 MB per transfer), with a live
+  progress bar and a clear completed or failed transfer message
 - Downloading, copying, renaming/moving, and deleting root-level files
 - Automatic refresh of the HMI image list after a browser-side change
 
