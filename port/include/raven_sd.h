@@ -3,6 +3,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "freertos/FreeRTOS.h"
+
 /** @brief FAT filesystem mount point used by the Elecrow microSD slot. */
 #define RAVEN_SD_MOUNT_POINT "/sdcard"
 /** @brief Maximum BMP entries the gallery keeps in memory at one time. */
@@ -25,6 +27,15 @@ int raven_sd_mount(void);
 void raven_sd_unmount(void);
 /** @brief Return non-zero when the FAT filesystem is currently mounted. */
 int raven_sd_is_mounted(void);
+/**
+ * @brief Lock SD-card filesystem access across the gallery and HTTP server.
+ *
+ * The lock is recursive, so port helpers may safely call one another while a
+ * browser transfer owns the card.
+ */
+int raven_sd_lock(TickType_t wait_ticks);
+/** @brief Release a lock acquired with raven_sd_lock(). */
+void raven_sd_unlock(void);
 /** @brief Enumerate root-level .bmp files, sorted by filename. */
 int raven_sd_list_bmps(raven_sd_file_t* files, int capacity);
 /**

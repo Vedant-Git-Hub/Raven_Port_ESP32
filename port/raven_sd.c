@@ -12,6 +12,7 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_vfs_fat.h"
+#include "freertos/semphr.h"
 #include "sdmmc_cmd.h"
 
 #include <dirent.h>
@@ -30,6 +31,25 @@
 static const char* TAG = "raven_sd";
 static sdmmc_card_t* s_card;
 static int s_bus_initialized;
+static SemaphoreHandle_t s_mutex;
+
+/** @brief Lazily create the recursive FATFS access lock. */
+static int raven_sd_create_lock(void)
+{
+    if (!s_mutex) s_mutex = xSemaphoreCreateRecursiveMutex();
+    return s_mutex != NULL;
+}
+
+int raven_sd_lock(TickType_t wait_ticks)
+{
+    return raven_sd_create_lock() &&
+           xSemaphoreTakeRecursive(s_mutex, wait_ticks) == pdTRUE;
+}
+
+void raven_sd_unlock(void)
+{
+    if (s_mutex) xSemaphoreGiveRecursive(s_mutex);
+}
 
 /** @brief Compare entries without imposing case sensitivity on FAT filenames. */
 static int raven_sd_compare_files(const void* left, const void* right)
@@ -65,13 +85,18 @@ int raven_sd_mount(void)
     };
     esp_err_t result;
 
-    if (s_card) return 1;
+    if (!raven_sd_lock(pdMS_TO_TICKS(1000))) return 0;
+    if (s_card) {
+        raven_sd_unlock();
+        return 1;
+    }
     host.slot = SPI2_HOST;
     device_config.host_id = host.slot;
     device_config.gpio_cs = RAVEN_SD_CS;
     result = spi_bus_initialize(host.slot, &bus_config, SPI_DMA_CH_AUTO);
     if (result != ESP_OK) {
         ESP_LOGW(TAG, "SPI bus unavailable: %s", esp_err_to_name(result));
+        raven_sd_unlock();
         return 0;
     }
     s_bus_initialized = 1;
@@ -82,14 +107,17 @@ int raven_sd_mount(void)
         s_card = NULL;
         spi_bus_free(host.slot);
         s_bus_initialized = 0;
+        raven_sd_unlock();
         return 0;
     }
     ESP_LOGI(TAG, "mounted SD card at %s", RAVEN_SD_MOUNT_POINT);
+    raven_sd_unlock();
     return 1;
 }
 
 void raven_sd_unmount(void)
 {
+    if (!raven_sd_lock(pdMS_TO_TICKS(5000))) return;
     if (s_card) {
         esp_vfs_fat_sdcard_unmount(RAVEN_SD_MOUNT_POINT, s_card);
         s_card = NULL;
@@ -98,6 +126,7 @@ void raven_sd_unmount(void)
         spi_bus_free(SPI2_HOST);
         s_bus_initialized = 0;
     }
+    raven_sd_unlock();
 }
 
 int raven_sd_is_mounted(void)
@@ -111,9 +140,16 @@ int raven_sd_list_bmps(raven_sd_file_t* files, int capacity)
     struct dirent* entry;
     int count = 0;
 
-    if (!files || capacity <= 0 || !s_card) return 0;
+    if (!files || capacity <= 0 || !raven_sd_lock(pdMS_TO_TICKS(1000))) return 0;
+    if (!s_card) {
+        raven_sd_unlock();
+        return 0;
+    }
     directory = opendir(RAVEN_SD_MOUNT_POINT);
-    if (!directory) return 0;
+    if (!directory) {
+        raven_sd_unlock();
+        return 0;
+    }
     while ((entry = readdir(directory)) != NULL && count < capacity) {
         struct stat info;
         raven_sd_file_t* file;
@@ -134,6 +170,7 @@ int raven_sd_list_bmps(raven_sd_file_t* files, int capacity)
     }
     closedir(directory);
     qsort(files, (size_t)count, sizeof(*files), raven_sd_compare_files);
+    raven_sd_unlock();
     return count;
 }
 
@@ -144,22 +181,32 @@ uint8_t* raven_sd_read_file(const char* path, size_t* size)
     uint8_t* data;
 
     if (size) *size = 0;
-    if (!s_card || !path) return NULL;
+    if (!path || !raven_sd_lock(pdMS_TO_TICKS(5000))) return NULL;
+    if (!s_card) {
+        raven_sd_unlock();
+        return NULL;
+    }
     file = fopen(path, "rb");
-    if (!file) return NULL;
+    if (!file) {
+        raven_sd_unlock();
+        return NULL;
+    }
     if (fseek(file, 0, SEEK_END) != 0 || (length = ftell(file)) <= 0 ||
         (size_t)length > RAVEN_SD_MAX_BMP_BYTES || fseek(file, 0, SEEK_SET) != 0) {
         fclose(file);
+        raven_sd_unlock();
         return NULL;
     }
     data = heap_caps_malloc((size_t)length, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!data || fread(data, 1, (size_t)length, file) != (size_t)length) {
         heap_caps_free(data);
         fclose(file);
+        raven_sd_unlock();
         return NULL;
     }
     fclose(file);
     if (size) *size = (size_t)length;
+    raven_sd_unlock();
     return data;
 }
 

@@ -18,6 +18,9 @@
                 <Label Name="count" Text="CARD OFFLINE" TextSize="11" Color="#000000"/>
             </Border>
             <Button Name="rescan" Text="Rescan" Style="Primary" Slot.VAlign="Center"/>
+            <Border Background="#00BFA5" CornerRadius="8" Slot.VAlign="Center">
+                <Button Name="wifi_open" Text="Wi-Fi" Style="Flat"/>
+            </Border>
         </HBox>
 
         <HBox Spacing="14" Slot.Fill="1" Slot.Padding="18,4,18,10">
@@ -69,6 +72,73 @@
             <Label Text="  •  " TextSize="10" Color="#FFFFFF" Slot.VAlign="Center"/>
             <Label Text="ELECROW ESP32-S3" TextSize="10" Color="#FF00FF" Slot.VAlign="Center"/>
         </HBox>
+    </VBox>
+    </Border>
+
+    <!-- Wi-Fi credentials and the on-screen keyboard are kept in the Raven UI
+         so setup works with the GT911 touch panel and no physical keyboard. -->
+    <Border Name="wifi" Background="#08151C" Visibility="Collapsed" Slot.Fill="1">
+    <VBox Spacing="7" Slot.Padding="18,12,18,10">
+        <HBox Height="38" Spacing="12">
+            <Border Background="#E53935" CornerRadius="8">
+                <Button Name="wifi_back" Text="Back" Style="Flat"/>
+            </Border>
+            <VBox Slot.Fill="1" Spacing="0">
+                <Label Text="Wi-Fi SD Manager" TextSize="20" Color="#FFFFFF"/>
+                <Label Text="Connect this HMI and your computer to the same network" TextSize="10" Color="#00BFA5"/>
+            </VBox>
+            <Border Background="#FDD835" CornerRadius="100" Padding="10,4" Slot.VAlign="Center">
+                <Label Name="wifi_ip" Text="IP address: not connected" TextSize="10" Color="#000000"/>
+            </Border>
+        </HBox>
+
+        <HBox Height="38" Spacing="8">
+            <Border Background="#1565C0" CornerRadius="8" Width="104">
+                <Button Name="wifi_edit_ssid" Text="Wi-Fi name" Style="Flat"/>
+            </Border>
+            <Border Background="#10242D" BorderColor="#00BFA5" BorderWidth="1" CornerRadius="8" Padding="10,5" Slot.Fill="1">
+                <Label Name="wifi_ssid" Text="Tap Wi-Fi name to enter it" TextSize="14" Color="#FFFFFF" Slot.VAlign="Center"/>
+            </Border>
+        </HBox>
+        <HBox Height="38" Spacing="8">
+            <Border Background="#7B1FA2" CornerRadius="8" Width="104">
+                <Button Name="wifi_edit_password" Text="Password" Style="Flat"/>
+            </Border>
+            <Border Background="#10242D" BorderColor="#FF00FF" BorderWidth="1" CornerRadius="8" Padding="10,5" Slot.Fill="1">
+                <Label Name="wifi_password" Text="Tap Password to enter it" TextSize="14" Color="#FFFFFF" Slot.VAlign="Center"/>
+            </Border>
+        </HBox>
+        <HBox Height="24">
+            <Label Name="wifi_editing" Text="Editing: Wi-Fi name" TextSize="11" Color="#FDD835" Slot.Fill="1" Slot.VAlign="Center"/>
+            <Label Name="wifi_status" Text="Enter your Wi-Fi name and password." TextSize="11" Color="#FFFFFF" Slot.VAlign="Center"/>
+        </HBox>
+
+        <Border Background="#101010" BorderColor="#1565C0" BorderWidth="1" CornerRadius="10" Padding="7,6">
+        <VBox Spacing="4">
+            <HBox Height="28" Spacing="4">
+                <Button Name="key_1" Text="1" Style="Flat" Slot.Fill="1"/><Button Name="key_2" Text="2" Style="Flat" Slot.Fill="1"/><Button Name="key_3" Text="3" Style="Flat" Slot.Fill="1"/><Button Name="key_4" Text="4" Style="Flat" Slot.Fill="1"/><Button Name="key_5" Text="5" Style="Flat" Slot.Fill="1"/><Button Name="key_6" Text="6" Style="Flat" Slot.Fill="1"/><Button Name="key_7" Text="7" Style="Flat" Slot.Fill="1"/><Button Name="key_8" Text="8" Style="Flat" Slot.Fill="1"/><Button Name="key_9" Text="9" Style="Flat" Slot.Fill="1"/><Button Name="key_0" Text="0" Style="Flat" Slot.Fill="1"/>
+            </HBox>
+            <HBox Height="28" Spacing="4">
+                <Button Name="key_q" Text="q" Style="Flat" Slot.Fill="1"/><Button Name="key_w" Text="w" Style="Flat" Slot.Fill="1"/><Button Name="key_e" Text="e" Style="Flat" Slot.Fill="1"/><Button Name="key_r" Text="r" Style="Flat" Slot.Fill="1"/><Button Name="key_t" Text="t" Style="Flat" Slot.Fill="1"/><Button Name="key_y" Text="y" Style="Flat" Slot.Fill="1"/><Button Name="key_u" Text="u" Style="Flat" Slot.Fill="1"/><Button Name="key_i" Text="i" Style="Flat" Slot.Fill="1"/><Button Name="key_o" Text="o" Style="Flat" Slot.Fill="1"/><Button Name="key_p" Text="p" Style="Flat" Slot.Fill="1"/>
+            </HBox>
+            <HBox Height="28" Spacing="4">
+                <Spacer Slot.Fill="1"/><Button Name="key_a" Text="a" Style="Flat" Slot.Fill="1"/><Button Name="key_s" Text="s" Style="Flat" Slot.Fill="1"/><Button Name="key_d" Text="d" Style="Flat" Slot.Fill="1"/><Button Name="key_f" Text="f" Style="Flat" Slot.Fill="1"/><Button Name="key_g" Text="g" Style="Flat" Slot.Fill="1"/><Button Name="key_h" Text="h" Style="Flat" Slot.Fill="1"/><Button Name="key_j" Text="j" Style="Flat" Slot.Fill="1"/><Button Name="key_k" Text="k" Style="Flat" Slot.Fill="1"/><Button Name="key_l" Text="l" Style="Flat" Slot.Fill="1"/><Spacer Slot.Fill="1"/>
+            </HBox>
+            <HBox Height="28" Spacing="4">
+                <Button Name="key_shift" Text="abc" Style="Flat" Width="58"/><Button Name="key_z" Text="z" Style="Flat" Slot.Fill="1"/><Button Name="key_x" Text="x" Style="Flat" Slot.Fill="1"/><Button Name="key_c" Text="c" Style="Flat" Slot.Fill="1"/><Button Name="key_v" Text="v" Style="Flat" Slot.Fill="1"/><Button Name="key_b" Text="b" Style="Flat" Slot.Fill="1"/><Button Name="key_n" Text="n" Style="Flat" Slot.Fill="1"/><Button Name="key_m" Text="m" Style="Flat" Slot.Fill="1"/><Button Name="key_backspace" Text="Del" Style="Flat" Width="58"/>
+            </HBox>
+            <HBox Height="28" Spacing="4">
+                <Button Name="key_dot" Text="." Style="Flat" Slot.Fill="1"/><Button Name="key_dash" Text="-" Style="Flat" Slot.Fill="1"/><Button Name="key_under" Text="_" Style="Flat" Slot.Fill="1"/><Button Name="key_at" Text="@" Style="Flat" Slot.Fill="1"/><Button Name="key_slash" Text="/" Style="Flat" Slot.Fill="1"/><Button Name="key_bang" Text="!" Style="Flat" Slot.Fill="1"/><Button Name="key_hash" Text="#" Style="Flat" Slot.Fill="1"/><Button Name="key_plus" Text="+" Style="Flat" Slot.Fill="1"/><Button Name="key_equal" Text="=" Style="Flat" Slot.Fill="1"/><Button Name="key_percent" Text="%" Style="Flat" Slot.Fill="1"/><Button Name="key_dollar" Text="$" Style="Flat" Slot.Fill="1"/><Button Name="key_amp" Text="&amp;" Style="Flat" Slot.Fill="1"/><Button Name="key_colon" Text=":" Style="Flat" Slot.Fill="1"/><Button Name="key_space" Text="Space" Style="Flat" Slot.Fill="2"/>
+            </HBox>
+        </VBox>
+        </Border>
+        <HBox Height="36" Spacing="10">
+            <Border Background="#00C853" CornerRadius="8" Slot.Fill="1">
+                <Button Name="wifi_connect" Text="Connect and start SD manager" Style="Flat"/>
+            </Border>
+            <Label Text="After connecting, type the IP address above into your computer browser." TextSize="10" Color="#00BFA5" Width="290" Wrap="true" Slot.VAlign="Center"/>
+        </HBox>
+        <Label Text="Wi-Fi stays active when you return to the gallery. Browser uploads refresh the image list automatically." TextSize="10" Color="#FFFFFF" Slot.VAlign="Center"/>
     </VBox>
     </Border>
     <!-- This is intentionally the only widget visible during playback: every

@@ -10,6 +10,7 @@
 #include "raven_display.h"
 #include "raven_esp_backend.h"
 #include "raven_sd.h"
+#include "raven_wifi.h"
 
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -19,6 +20,7 @@
 
 #include <Raven.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
 
 extern const char gallery_xml_start[] asm("_binary_gallery_xml_start");
@@ -35,12 +37,25 @@ static struct {
     Rid selected;
     Rid count;
     Rid texture;
+    Rid wifi;
+    Rid wifi_status;
+    Rid wifi_ip;
+    Rid wifi_ssid;
+    Rid wifi_password;
+    Rid wifi_editing;
+    Rid wifi_shift;
     raven_sd_file_t entries[RAVEN_SD_MAX_FILES];
+    raven_wifi_status_t last_wifi_status;
+    char wifi_ssid_text[33];
+    char wifi_password_text[64];
     int entry_count;
     int slideshow_index;
     int slideshow_last_index;
     int slideshow_active;
     int slideshow_arm_after_draw;
+    int gallery_refresh_pending;
+    int wifi_edit_target;
+    int wifi_uppercase;
     int64_t slideshow_deadline_us;
 } app;
 
@@ -54,6 +69,123 @@ static void raven_error(RError code, RSeverity severity, const char* detail)
 static void gallery_status(const char* text)
 {
     Rlabel_set_text(app.status, text ? text : "");
+}
+
+/** @brief Redraw the Wi-Fi credential fields while keeping the password masked. */
+static void wifi_refresh_fields(void)
+{
+    char password_mask[sizeof(app.wifi_password_text)];
+    size_t length = strlen(app.wifi_password_text);
+
+    Rlabel_set_text(app.wifi_ssid, app.wifi_ssid_text[0] ? app.wifi_ssid_text : "Tap SSID to enter it");
+    memset(password_mask, 0, sizeof(password_mask));
+    memset(password_mask, '*', length);
+    Rlabel_set_text(app.wifi_password, length ? password_mask : "Tap Password to enter it");
+    Rlabel_set_text(app.wifi_editing, app.wifi_edit_target == 0 ? "Editing: Wi-Fi name" : "Editing: Password");
+    Rbutton_set_text(app.wifi_shift, app.wifi_uppercase ? "ABC" : "abc");
+}
+
+/** @brief Copy asynchronous Wi-Fi state into widgets owned by the Raven task. */
+static void wifi_sync_status(void)
+{
+    raven_wifi_status_t status;
+    char ip_line[40];
+
+    raven_wifi_get_status(&status);
+    if (memcmp(&status, &app.last_wifi_status, sizeof(status)) == 0) return;
+    app.last_wifi_status = status;
+    Rlabel_set_text(app.wifi_status, status.message);
+    snprintf(ip_line, sizeof(ip_line), "IP address: %s", status.ip[0] ? status.ip : "not connected");
+    Rlabel_set_text(app.wifi_ip, ip_line);
+}
+
+/** @brief Choose which touchscreen credential field receives virtual keys. */
+static void wifi_select_ssid(Rid button, void* user_data)
+{
+    (void)button;
+    (void)user_data;
+    app.wifi_edit_target = 0;
+    wifi_refresh_fields();
+}
+
+/** @brief Choose the masked password field for virtual-keyboard entry. */
+static void wifi_select_password(Rid button, void* user_data)
+{
+    (void)button;
+    (void)user_data;
+    app.wifi_edit_target = 1;
+    wifi_refresh_fields();
+}
+
+/** @brief Append one printable ASCII character to the selected Wi-Fi field. */
+static void wifi_key(Rid button, void* user_data)
+{
+    char* text = app.wifi_edit_target == 0 ? app.wifi_ssid_text : app.wifi_password_text;
+    size_t capacity = app.wifi_edit_target == 0 ? sizeof(app.wifi_ssid_text) : sizeof(app.wifi_password_text);
+    size_t length = strlen(text);
+    unsigned char character = (unsigned char)(uintptr_t)user_data;
+    (void)button;
+
+    if (app.wifi_uppercase && character >= 'a' && character <= 'z') character -= 'a' - 'A';
+    if (length + 1U < capacity) {
+        text[length] = (char)character;
+        text[length + 1U] = '\0';
+    }
+    wifi_refresh_fields();
+}
+
+/** @brief Delete the final virtual-keyboard character from the active field. */
+static void wifi_backspace(Rid button, void* user_data)
+{
+    char* text = app.wifi_edit_target == 0 ? app.wifi_ssid_text : app.wifi_password_text;
+    size_t length = strlen(text);
+    (void)button;
+    (void)user_data;
+    if (length) text[length - 1U] = '\0';
+    wifi_refresh_fields();
+}
+
+/** @brief Toggle upper-case text for the virtual Wi-Fi keyboard. */
+static void wifi_toggle_shift(Rid button, void* user_data)
+{
+    (void)button;
+    (void)user_data;
+    app.wifi_uppercase = !app.wifi_uppercase;
+    wifi_refresh_fields();
+}
+
+/** @brief Begin an asynchronous station connection using the entered credentials. */
+static void wifi_connect(Rid button, void* user_data)
+{
+    (void)button;
+    (void)user_data;
+    if (!app.wifi_ssid_text[0]) {
+        Rlabel_set_text(app.wifi_status, "Enter a Wi-Fi name first.");
+        return;
+    }
+    if (!raven_wifi_connect(app.wifi_ssid_text, app.wifi_password_text)) {
+        Rlabel_set_text(app.wifi_status, "Could not start connection. Check the Wi-Fi setup.");
+    }
+}
+
+/** @brief Return from Wi-Fi setup to the gallery without disconnecting. */
+static void wifi_back_to_gallery(Rid button, void* user_data)
+{
+    (void)button;
+    (void)user_data;
+    Rwidget_set_visibility(app.wifi, R_COLLAPSED);
+    Rwidget_set_visibility(app.gallery, R_VISIBLE);
+}
+
+/** @brief Open local Wi-Fi setup and its browser-access instructions. */
+static void wifi_open(Rid button, void* user_data)
+{
+    (void)button;
+    (void)user_data;
+    Rwidget_set_visibility(app.gallery, R_COLLAPSED);
+    Rwidget_set_visibility(app.wifi, R_VISIBLE);
+    wifi_refresh_fields();
+    wifi_sync_status();
 }
 
 /** @brief Release the selected texture and return the preview to its empty state. */
@@ -252,6 +384,24 @@ static void gallery_rescan(Rid button, void* user_data)
 /** @brief Resolve named widgets and connect all gallery interactions. */
 static void gallery_connect_widgets(void)
 {
+    static const struct {
+        const char* name;
+        unsigned char character;
+    } keys[] = {
+        {"key_1", '1'}, {"key_2", '2'}, {"key_3", '3'}, {"key_4", '4'}, {"key_5", '5'},
+        {"key_6", '6'}, {"key_7", '7'}, {"key_8", '8'}, {"key_9", '9'}, {"key_0", '0'},
+        {"key_q", 'q'}, {"key_w", 'w'}, {"key_e", 'e'}, {"key_r", 'r'}, {"key_t", 't'},
+        {"key_y", 'y'}, {"key_u", 'u'}, {"key_i", 'i'}, {"key_o", 'o'}, {"key_p", 'p'},
+        {"key_a", 'a'}, {"key_s", 's'}, {"key_d", 'd'}, {"key_f", 'f'}, {"key_g", 'g'},
+        {"key_h", 'h'}, {"key_j", 'j'}, {"key_k", 'k'}, {"key_l", 'l'}, {"key_z", 'z'},
+        {"key_x", 'x'}, {"key_c", 'c'}, {"key_v", 'v'}, {"key_b", 'b'}, {"key_n", 'n'},
+        {"key_m", 'm'}, {"key_dot", '.'}, {"key_dash", '-'}, {"key_under", '_'}, {"key_at", '@'},
+        {"key_slash", '/'}, {"key_bang", '!'}, {"key_hash", '#'}, {"key_plus", '+'},
+        {"key_equal", '='}, {"key_percent", '%'}, {"key_dollar", '$'}, {"key_amp", '&'},
+        {"key_colon", ':'}, {"key_space", ' '},
+    };
+    size_t index;
+
     app.files = Rwidget_find(app.window, "files");
     app.gallery = Rwidget_find(app.window, "gallery");
     app.preview = Rwidget_find(app.window, "preview");
@@ -259,10 +409,28 @@ static void gallery_connect_widgets(void)
     app.status = Rwidget_find(app.window, "status");
     app.selected = Rwidget_find(app.window, "selected");
     app.count = Rwidget_find(app.window, "count");
+    app.wifi = Rwidget_find(app.window, "wifi");
+    app.wifi_status = Rwidget_find(app.window, "wifi_status");
+    app.wifi_ip = Rwidget_find(app.window, "wifi_ip");
+    app.wifi_ssid = Rwidget_find(app.window, "wifi_ssid");
+    app.wifi_password = Rwidget_find(app.window, "wifi_password");
+    app.wifi_editing = Rwidget_find(app.window, "wifi_editing");
+    app.wifi_shift = Rwidget_find(app.window, "key_shift");
     Rlist_view_set_selection_changed_callback(app.files, gallery_selected, NULL);
     Rbutton_set_clicked_callback(Rwidget_find(app.window, "open"), gallery_open, NULL);
     Rbutton_set_clicked_callback(Rwidget_find(app.window, "slideshow"), gallery_start_slideshow, NULL);
     Rbutton_set_clicked_callback(Rwidget_find(app.window, "rescan"), gallery_rescan, NULL);
+    Rbutton_set_clicked_callback(Rwidget_find(app.window, "wifi_open"), wifi_open, NULL);
+    Rbutton_set_clicked_callback(Rwidget_find(app.window, "wifi_back"), wifi_back_to_gallery, NULL);
+    Rbutton_set_clicked_callback(Rwidget_find(app.window, "wifi_edit_ssid"), wifi_select_ssid, NULL);
+    Rbutton_set_clicked_callback(Rwidget_find(app.window, "wifi_edit_password"), wifi_select_password, NULL);
+    Rbutton_set_clicked_callback(Rwidget_find(app.window, "wifi_connect"), wifi_connect, NULL);
+    Rbutton_set_clicked_callback(Rwidget_find(app.window, "key_backspace"), wifi_backspace, NULL);
+    Rbutton_set_clicked_callback(app.wifi_shift, wifi_toggle_shift, NULL);
+    for (index = 0; index < sizeof(keys) / sizeof(keys[0]); ++index) {
+        Rbutton_set_clicked_callback(Rwidget_find(app.window, keys[index].name), wifi_key,
+                                     (void*)(uintptr_t)keys[index].character);
+    }
 }
 
 void raven_application_task(void* user_data)
@@ -298,12 +466,25 @@ void raven_application_task(void* user_data)
     }
     Rhost_window_set_size(app.window, RAVEN_DISPLAY_WIDTH, RAVEN_DISPLAY_HEIGHT, 1.0f);
     gallery_connect_widgets();
+    if (!raven_wifi_init()) {
+        ESP_LOGE(TAG, "Wi-Fi initialization failed");
+        Rlabel_set_text(app.wifi_status, "Wi-Fi could not initialize.");
+    }
+    wifi_refresh_fields();
+    wifi_sync_status();
     gallery_scan(0);
     Rwindow_show(app.window);
 
     ESP_LOGI(TAG, "Raven SD gallery running on CPU1");
     while (Rdraw_frame()) {
         raven_touch_event_t event;
+        wifi_sync_status();
+        if (raven_wifi_take_media_changed()) app.gallery_refresh_pending = 1;
+        if (app.gallery_refresh_pending && !app.slideshow_active) {
+            app.gallery_refresh_pending = 0;
+            gallery_scan(0);
+            gallery_status("SD card updated over Wi-Fi.");
+        }
         gallery_mark_slideshow_presented();
         if (app.slideshow_active && !app.slideshow_arm_after_draw &&
             esp_timer_get_time() >= app.slideshow_deadline_us) {

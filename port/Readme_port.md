@@ -14,6 +14,7 @@ source files or ESP-IDF components.
 | --- | --- | --- |
 | `raven_display.c` | RGB panel timings/pins, backlight, GT911 I2C, vblank wait | Replace with the target display/touch driver and native framebuffer access. |
 | `raven_sd.c` | Onboard SPI microSD mount, FAT scan, and PSRAM file reads | Change the SPI pins/host or replace it with the target removable-media driver. |
+| `raven_wifi.c` | ESP-IDF Wi-Fi station, LAN HTTP server, and synchronized SD-card operations | Replace with the target network stack or keep the same HTTP API on a Wi-Fi-capable ESP-IDF target. |
 | `raven_esp_backend.c` | Raven `RBackendVTable`, RGB565 rendering, texture allocation, dirty regions | Retain for an RGB565 CPU framebuffer, or implement the same Raven backend vtable with the target GPU/DMA engine. |
 | `raven_esp_thread.c` | Raven thread/mutex/clock services | Map these functions to the target RTOS or threading system. |
 | `raven_esp_fs.c` | Filesystem, paths, URLs, and file chooser fallbacks | Keep stubs for immutable firmware, or connect LittleFS/FATFS as required. |
@@ -63,6 +64,21 @@ decodes the next file before releasing the prior slide, then frees that slide
 before creating the replacement texture. This keeps all slideshow allocations
 inside the 8 MB PSRAM budget.
 
+## Wi-Fi SD manager
+
+`raven_wifi.c` owns the ESP-IDF station interface and starts a port-80 HTTP
+server only after DHCP succeeds. It does not retain Wi-Fi credentials: the
+application supplies them from its touchscreen page and the station uses
+`WIFI_STORAGE_RAM`. The service is intentionally LAN-only and unauthenticated;
+add authentication and TLS before exposing an equivalent port outside a trusted
+private network.
+
+The HTTP worker and Raven task share FATFS through the recursive mutex exposed
+by `raven_sd.c`. Uploads and copies use temporary files, then rename them only
+after completion. A successful browser-side mutation raises a small flag; the
+application consumes it on its rendering task and rescans the gallery, so no
+Raven widget is touched from the HTTP worker context.
+
 ## Porting checklist
 
 1. Configure the display resolution and pixel format in `raven_display.h`.
@@ -72,13 +88,13 @@ inside the 8 MB PSRAM budget.
    framebuffer or replace the software backend vtable entirely.
 4. Translate the target touch/pointer device into the normalized coordinates
    returned by `raven_touch_poll()`.
-5. Adapt the thread, time, filesystem, font, dialog, and removable-media hooks as needed.
+5. Adapt the thread, time, filesystem, font, dialog, removable-media, and network hooks as needed.
 6. Add the target's components to `port/components` and update the
    `REQUIRES` list in `src/CMakeLists.txt`.
 7. Enable the decoder needed by the application (for this gallery,
    `RAVEN_WITH_STB_IMAGE=1`) in the target component's compile definitions.
 8. Build, flash, and perform the smoke test in the root README, including a
-   complete slideshow cycle.
+   complete slideshow cycle and a Wi-Fi upload on a trusted local network.
 
 ## Rules of the boundary
 

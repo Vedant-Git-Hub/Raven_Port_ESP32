@@ -4,7 +4,8 @@ This repository is a self-contained ESP-IDF port of the
 [Raven graphics library](https://github.com/oscar-soirey/Raven) for Elecrow's
 800×480 ESP32-S3 RGB HMI. It provides a polished, touch-friendly microSD BMP
 gallery: select an image from the card's file list, preview it directly on the
-panel, or play the library as a full-screen slideshow.
+panel, play the library as a full-screen slideshow, or manage the SD card over
+the HMI's Wi-Fi connection from a browser.
 
 The port uses an RGB565 software renderer that writes into the RGB panel's
 PSRAM framebuffer. GT911 touch is normalized into Raven mouse events. Raven
@@ -23,6 +24,7 @@ port/                   All board/OS/rendering adaptation code
   include/              Port public headers
   components/           Vendored ESP-IDF touch components
   raven_sd.c            SPI microSD and FAT/FAT32 implementation
+  raven_wifi.c          Wi-Fi station and LAN HTTP SD-card manager
   Readme_port.md        Board-porting guide
 Doxyfile                Documentation configuration
 ```
@@ -40,6 +42,7 @@ Raven while replacing only the port layer. See
   5.5.2
 - Python environment installed by ESP-IDF
 - USB serial access to the board
+- A 2.4 GHz Wi-Fi network shared by the HMI and the computer used for uploads
 
 The source and required GT911 components are already in this repository; no
 separate Raven clone or I2C example project is needed.
@@ -137,6 +140,32 @@ For the 8 MB PSRAM target, full-screen opaque gallery images are compacted by
 the ESP32-S3 backend from Raven's RGBA8 source into RGB565 texture storage.
 This uses 768 KB per displayed 800×480 image and allows every slide to load
 reliably without exhausting PSRAM.
+
+## Wi-Fi SD-card manager
+
+The **Wi-Fi** button opens a touch-only setup screen. Tap **Wi-Fi name** or
+**Password**, use the on-screen keyboard to enter the credentials, then tap
+**Connect and start SD manager**. The password is masked on screen. Credentials
+are kept only in RAM and are not saved after reset.
+
+Once DHCP completes, the screen shows an address such as `192.168.1.42`. On a
+computer connected to the same Wi-Fi network, open:
+
+```text
+http://192.168.1.42
+```
+
+The compact built-in page lists regular files in the SD-card root and supports:
+
+- Uploading files from the computer (up to 4 MB per transfer)
+- Downloading, copying, renaming/moving, and deleting root-level files
+- Automatic refresh of the HMI image list after a browser-side change
+
+Gallery images remain subject to the 24-bit, 800×480 BMP requirements above.
+For safety, browser-created names are limited to letters, numbers, `.`, `_`,
+and `-`; use simple root-level names such as `sunset_01.bmp`. The HTTP manager
+has no login or TLS to keep the firmware compact, so use it only on a trusted
+private LAN and never expose the HMI to the public internet.
 
 ## Documentation
 

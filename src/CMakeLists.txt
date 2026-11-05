@@ -19,6 +19,7 @@ idf_component_register(
         "application.c"
         "../port/raven_display.c"
         "../port/raven_sd.c"
+        "../port/raven_wifi.c"
         "../port/raven_esp_backend.c"
         "../port/raven_esp_thread.c"
         "../port/raven_esp_fs.c"
@@ -38,7 +39,9 @@ idf_component_register(
         ${RAVEN_XML_SOURCES}
     INCLUDE_DIRS "include" "../port/include" "${RAVEN_ROOT}/include"
     PRIV_INCLUDE_DIRS "${RAVEN_ROOT}/src" "${RAVEN_ROOT}/third_party"
-    REQUIRES esp_lcd driver esp_timer esp_hw_support esp_mm fatfs sdmmc esp_driver_sdspi espressif__esp_lcd_touch espressif__esp_lcd_touch_gt911)
+    REQUIRES esp_lcd driver esp_timer esp_hw_support esp_mm fatfs sdmmc esp_driver_sdspi
+             esp_wifi esp_http_server esp_netif nvs_flash
+             espressif__esp_lcd_touch espressif__esp_lcd_touch_gt911)
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
     RAVEN_PLATFORM_ESP_IDF=1
