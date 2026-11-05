@@ -18,6 +18,12 @@ from PIL import Image, ImageOps, ImageTk
 DISPLAY_SIZE = (800, 480)
 PREVIEW_SIZE = (500, 300)
 BACKGROUND = (11, 16, 32)
+ROTATION_OPTIONS = {
+    "Automatic / 0°": 0,
+    "90° clockwise": 90,
+    "180°": 180,
+    "90° counter-clockwise": 270,
+}
 
 
 def flatten_to_rgb(image: Image.Image) -> Image.Image:
@@ -30,14 +36,17 @@ def flatten_to_rgb(image: Image.Image) -> Image.Image:
     return image.convert("RGB")
 
 
-def prepare_image(source: Path, resize_mode: str) -> Image.Image:
+def prepare_image(source: Path, resize_mode: str, rotation: int = 0) -> Image.Image:
     """Open *source* and return an exact 800x480 RGB image.
 
     ``crop`` fills the display while preserving aspect ratio and center-crops
     excess content. ``fit`` letterboxes onto the gallery's dark background.
+    ``rotation`` is applied clockwise after automatic EXIF orientation.
     """
     with Image.open(source) as opened:
         image = flatten_to_rgb(opened)
+        if rotation:
+            image = image.rotate(-rotation, expand=True)
         if resize_mode == "fit":
             fitted = ImageOps.contain(image, DISPLAY_SIZE, Image.Resampling.LANCZOS)
             result = Image.new("RGB", DISPLAY_SIZE, BACKGROUND)
@@ -49,14 +58,14 @@ def prepare_image(source: Path, resize_mode: str) -> Image.Image:
                             centering=(0.5, 0.5))
 
 
-def convert_image(source: Path, destination: Path, resize_mode: str) -> None:
+def convert_image(source: Path, destination: Path, resize_mode: str, rotation: int = 0) -> None:
     """Write *source* as an uncompressed 24-bit 800x480 BMP at *destination*."""
     if not source.is_file():
         raise FileNotFoundError(f"Input image not found: {source}")
     if destination.suffix.lower() != ".bmp":
         destination = destination.with_suffix(".bmp")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    prepared = prepare_image(source, resize_mode)
+    prepared = prepare_image(source, resize_mode, rotation)
     prepared.save(destination, format="BMP")
 
 
@@ -69,6 +78,7 @@ class ConverterApp(ttk.Frame):
         self.source = tk.StringVar()
         self.destination = tk.StringVar()
         self.resize_mode = tk.StringVar(value="crop")
+        self.rotation = tk.StringVar(value="Automatic / 0°")
         self.status = tk.StringVar(value="Choose an image to prepare a display preview.")
         self.preview_image: ImageTk.PhotoImage | None = None
         self._build()
@@ -94,6 +104,12 @@ class ConverterApp(ttk.Frame):
                         variable=self.resize_mode, command=self.update_preview).grid(row=0, column=0, sticky="w")
         ttk.Radiobutton(options, text="Fit entire image (dark letterbox)", value="fit",
                         variable=self.resize_mode, command=self.update_preview).grid(row=1, column=0, sticky="w", pady=(5, 0))
+        ttk.Label(options, text="Orientation").grid(row=0, column=1, sticky="w", padx=(28, 8))
+        orientation = ttk.Combobox(options, state="readonly", width=24,
+                                   textvariable=self.rotation,
+                                   values=tuple(ROTATION_OPTIONS))
+        orientation.grid(row=1, column=1, sticky="w", padx=(28, 0), pady=(5, 0))
+        orientation.bind("<<ComboboxSelected>>", lambda _event: self.update_preview())
 
         preview = ttk.LabelFrame(self, text="800 × 480 output preview", padding=8)
         preview.grid(row=5, column=0, columnspan=3, sticky="nsew")
@@ -143,7 +159,8 @@ class ConverterApp(ttk.Frame):
         if not source.is_file():
             return
         try:
-            image = prepare_image(source, self.resize_mode.get())
+            image = prepare_image(source, self.resize_mode.get(),
+                                  ROTATION_OPTIONS[self.rotation.get()])
             image.thumbnail(PREVIEW_SIZE, Image.Resampling.LANCZOS)
             self.preview_image = ImageTk.PhotoImage(image)
             self.preview_label.configure(image=self.preview_image, text="")
@@ -157,7 +174,10 @@ class ConverterApp(ttk.Frame):
         source = Path(self.source.get())
         destination = Path(self.destination.get())
         try:
-            convert_image(source, destination, self.resize_mode.get())
+            if not self.destination.get().strip():
+                raise ValueError("Choose a destination BMP path.")
+            convert_image(source, destination, self.resize_mode.get(),
+                          ROTATION_OPTIONS[self.rotation.get()])
             if destination.suffix.lower() != ".bmp":
                 destination = destination.with_suffix(".bmp")
             self.destination.set(str(destination))
@@ -175,6 +195,8 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, help="Destination BMP path")
     parser.add_argument("--mode", choices=("crop", "fit"), default="crop",
                         help="Resize behavior (default: crop)")
+    parser.add_argument("--rotate", choices=(0, 90, 180, 270), type=int, default=0,
+                        help="Manual clockwise rotation after EXIF orientation (default: 0)")
     return parser.parse_args()
 
 
@@ -184,7 +206,7 @@ def main() -> None:
     if args.input or args.output:
         if not args.input or not args.output:
             raise SystemExit("Both --input and --output are required for command-line conversion.")
-        convert_image(args.input, args.output, args.mode)
+        convert_image(args.input, args.output, args.mode, args.rotate)
         print(f"Created {args.output.with_suffix('.bmp')}")
         return
 

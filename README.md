@@ -78,13 +78,15 @@ python3 image_converter.py
 
 Choose a source image and destination path in the screen. **Fill display**
 preserves aspect ratio and center-crops; **Fit entire image** preserves all
-content and places dark bars where needed. The live preview shows the exact
+content and places dark bars where needed. The **Orientation** selector
+automatically honors the source EXIF orientation and can also rotate it 90°
+clockwise, 180°, or 90° counter-clockwise. The live preview shows the exact
 800×480 result.
 
 The same tool also works from a terminal:
 
 ```bash
-python3 image_converter.py --input /path/photo.jpg --output /path/gallery_photo.bmp --mode crop
+python3 image_converter.py --input /path/photo.jpg --output /path/gallery_photo.bmp --mode crop --rotate 90
 ```
 
 ## SD gallery application
