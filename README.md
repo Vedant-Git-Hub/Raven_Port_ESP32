@@ -61,6 +61,32 @@ export IDF_PATH=/home/vedant/esp/esp-adf/esp-idf
 
 The built application is `build/raven_hello.bin`.
 
+## Desktop image converter
+
+`image_converter.py` is a small Python desktop screen for preparing gallery
+images before copying them to the microSD card. It accepts common image formats
+supported by Pillow (JPEG, PNG, WebP, TIFF, GIF, BMP, and more), applies EXIF
+orientation, flattens transparency, resizes to the HMI's exact 800×480 panel,
+and writes an uncompressed 24-bit BMP.
+
+Install the one dependency and open the converter:
+
+```bash
+python3 -m pip install -r requirements.txt
+python3 image_converter.py
+```
+
+Choose a source image and destination path in the screen. **Fill display**
+preserves aspect ratio and center-crops; **Fit entire image** preserves all
+content and places dark bars where needed. The live preview shows the exact
+800×480 result.
+
+The same tool also works from a terminal:
+
+```bash
+python3 image_converter.py --input /path/photo.jpg --output /path/gallery_photo.bmp --mode crop
+```
+
 ## SD gallery application
 
 After reset, the application shows an image library on the left and a large
