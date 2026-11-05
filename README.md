@@ -166,7 +166,8 @@ The compact built-in page lists regular files in the SD-card root and supports:
 
 Gallery images remain subject to the 24-bit, 800×480 BMP requirements above.
 For safety, browser-created names are limited to letters, numbers, `.`, `_`,
-and `-`; use simple root-level names such as `sunset_01.bmp`. The HTTP manager
+and `-`, up to 95 characters; use simple root-level names such as
+`sunset_01.bmp`. The HTTP manager
 has no login or TLS to keep the firmware compact, so use it only on a trusted
 private LAN and never expose the HMI to the public internet.
 
