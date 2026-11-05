@@ -147,7 +147,8 @@ The **Wi-Fi** button opens a touch-only setup screen and automatically scans
 nearby visible 2.4 GHz networks. Select an SSID from that list, enter only its
 password with the on-screen keyboard, then tap **Connect and start SD
 manager**. Tap **Scan** to refresh the list. The password is masked on screen.
-Credentials are kept only in RAM and are not saved after reset.
+Credentials are retained in ESP-IDF Wi-Fi NVS and reconnect automatically
+after reset.
 
 Once DHCP completes, the screen shows an address such as `192.168.1.42`. On a
 computer connected to the same Wi-Fi network, open:

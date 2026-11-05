@@ -32,9 +32,15 @@ typedef struct {
     char message[96];
 } raven_wifi_status_t;
 
-/** Initialize ESP-NETIF, the station interface, and the local HTTP service. */
+/**
+ * Initialize ESP-NETIF and the station interface, then reconnect the saved
+ * NVS station profile when one is available.
+ */
 int raven_wifi_init(void);
-/** Begin a connection attempt using the supplied WPA/WPA2 station credentials. */
+/**
+ * Persist and begin a connection attempt using supplied WPA/WPA2 credentials.
+ * The saved profile is automatically retried after subsequent reboots.
+ */
 int raven_wifi_connect(const char* ssid, const char* password);
 /** Begin an asynchronous scan for nearby visible Wi-Fi networks. */
 int raven_wifi_start_scan(void);

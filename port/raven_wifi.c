@@ -46,6 +46,35 @@ static char s_scan_ip[sizeof(s_status.ip)];
 static int s_initialized;
 static int s_media_changed;
 
+static void raven_wifi_set_status(raven_wifi_state_t state, const char* ip,
+                                  const char* message);
+
+/**
+ * @brief Connect to a station profile already retained by the Wi-Fi driver.
+ *
+ * ESP-IDF stores station profiles in its NVS Wi-Fi namespace when flash
+ * storage is selected. Keeping this helper separate from the touchscreen
+ * connection path ensures a reboot never needs credentials entered again.
+ */
+static void raven_wifi_connect_saved_network(void)
+{
+    wifi_config_t saved_config = {0};
+
+    if (esp_wifi_get_config(WIFI_IF_STA, &saved_config) != ESP_OK ||
+        !saved_config.sta.ssid[0]) {
+        raven_wifi_set_status(RAVEN_WIFI_IDLE, NULL,
+                              "Tap Scan to select a Wi-Fi network.");
+        return;
+    }
+
+    raven_wifi_set_status(RAVEN_WIFI_CONNECTING, NULL,
+                          "Connecting to saved Wi-Fi network...");
+    if (esp_wifi_connect() != ESP_OK) {
+        raven_wifi_set_status(RAVEN_WIFI_FAILED, NULL,
+                              "Could not start saved Wi-Fi connection.");
+    }
+}
+
 /** A deliberately small single-page browser interface kept in firmware. */
 static const char s_web_page[] =
     "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>"
@@ -518,12 +547,14 @@ int raven_wifi_init(void)
     if (!s_station_netif || esp_wifi_init(&config) != ESP_OK) return 0;
     esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, raven_wifi_event, NULL);
     esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, raven_wifi_event, NULL);
-    esp_wifi_set_storage(WIFI_STORAGE_RAM);
+    /* Persist the latest touchscreen selection rather than losing it at reset. */
+    if (esp_wifi_set_storage(WIFI_STORAGE_FLASH) != ESP_OK) return 0;
     esp_wifi_set_mode(WIFI_MODE_STA);
     if (esp_wifi_start() != ESP_OK) return 0;
     esp_wifi_set_ps(WIFI_PS_NONE);
     s_initialized = 1;
     ESP_LOGI(TAG, "Wi-Fi station ready");
+    raven_wifi_connect_saved_network();
     return 1;
 }
 
