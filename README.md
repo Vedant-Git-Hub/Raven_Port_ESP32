@@ -63,8 +63,12 @@ export IDF_PATH=/home/vedant/esp/esp-adf/esp-idf
 The built application is `build/raven_hello.bin`.
 
 The project uses the HMI's full 4 MB flash configuration. Its factory-app
-partition is 0x3F0000 bytes (just under 4 MB); PSRAM is configured at 80 MHz
-and the 8 MB device is added to the ESP-IDF heap at boot.
+partition is 0x3F0000 bytes (just under 4 MB). PSRAM is configured in octal
+mode at 120 MHz for performance testing, with ESP-IDF temperature-based timing
+tuning enabled; the 8 MB device is added to the heap at boot. On an ESP32-S3,
+this octal-PSRAM rate requires the shared MSPI bus and flash to run at 120 MHz,
+using ESP-IDF high-performance flash mode. This 120 MHz configuration is
+experimental—return both PSRAM and flash to 80 MHz if instability is observed.
 
 ## Desktop image converter
 
