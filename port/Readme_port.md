@@ -53,7 +53,10 @@ full-frame rendering time cannot make it skip an image. It begins at the
 selected list entry (or index 0 when none is selected), temporarily collapses
 the gallery widget and shows only an `Image` widget stretched to the panel
 bounds, then restores the gallery after the final file. No display timing or
-touch path changes are made during playback.
+touch path changes are made during playback. The backend detects the opaque
+full-screen slide and paints it directly over the existing framebuffer rather
+than clearing the single scanout buffer first; this prevents a black flash
+between slideshow images without changing Raven's architecture.
 
 ## Porting checklist
 

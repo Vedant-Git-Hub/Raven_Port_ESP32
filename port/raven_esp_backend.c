@@ -36,6 +36,7 @@ typedef struct raven_esp_texture_t {
     Ruint dirty_x1;
     Ruint dirty_y1;
     int dirty;
+    int opaque;
 } raven_esp_texture_t;
 
 static struct {
@@ -57,6 +58,17 @@ static const char* TAG = "raven_backend";
 static size_t texture_bytes(const RTextureDesc* desc)
 {
     return (size_t)desc->width * desc->height * (desc->format == R_TEXTURE_ALPHA8 ? 1 : 4);
+}
+
+/** @brief Return whether every source RGBA pixel is fully opaque. */
+static int rgba_pixels_are_opaque(const uint8_t* pixels, size_t pixel_count)
+{
+    size_t index;
+    if (!pixels) return 0;
+    for (index = 0; index < pixel_count; ++index) {
+        if (pixels[index * 4 + 3] != 0xff) return 0;
+    }
+    return 1;
 }
 
 static raven_esp_texture_t* find_texture(Rid id)
@@ -272,6 +284,8 @@ static int backend_create_texture(Rid id, const RTextureDesc* desc, const void* 
         return R_FALSE;
     }
     texture->desc = *desc;
+    texture->opaque = desc->format != R_TEXTURE_ALPHA8 &&
+        rgba_pixels_are_opaque((const uint8_t*)pixels, (size_t)desc->width * desc->height);
     if (pixels) memcpy(texture->pixels, pixels, texture_bytes(desc));
     else memset(texture->pixels, 0, texture_bytes(desc));
     s_backend.frame_valid = 0;
@@ -284,6 +298,9 @@ static void backend_update_texture(Rid id, Ruint x, Ruint y, Ruint width, Ruint 
     raven_esp_texture_t* texture = find_texture(id);
     const size_t bytes_per_pixel = texture && texture->desc.format == R_TEXTURE_ALPHA8 ? 1 : 4;
     if (!texture || !pixels || x + width > texture->desc.width || y + height > texture->desc.height) return;
+    /* An arbitrary update can introduce transparency, so the fast opaque
+     * presentation path is valid only until a full opaque texture is made. */
+    if (texture->desc.format != R_TEXTURE_ALPHA8) texture->opaque = 0;
     for (row = 0; row < height; ++row) {
         memcpy(texture->pixels + ((size_t)(y + row) * texture->desc.width + x) * bytes_per_pixel,
                (const uint8_t*)pixels + (size_t)row * width * bytes_per_pixel,
@@ -430,7 +447,7 @@ static void clear_damage(uint16_t* framebuffer, const RDrawData* data,
 }
 
 static void render_damage(uint16_t* framebuffer, const RDrawData* data,
-                          const raven_esp_rect_t* damage)
+                          const raven_esp_rect_t* damage, Ruint first_instance)
 {
     Ruint i;
     for (i = 0; i < data->command_count; ++i) {
@@ -441,17 +458,58 @@ static void render_damage(uint16_t* framebuffer, const RDrawData* data,
         for (instance = command->first_instance;
              instance < command->first_instance + command->instance_count && instance < data->instance_count;
              ++instance) {
+            if (instance < first_instance) continue;
             draw_instance(framebuffer, data, &data->instances[instance], texture, damage);
         }
     }
+}
+
+/**
+ * @brief Find the last texture that can safely replace a complete frame.
+ *
+ * During the gallery slideshow an opaque BMP is the only full-screen widget.
+ * Drawing it over the previous framebuffer avoids exposing a black clear pass
+ * on a single-buffer RGB panel. Earlier instances are fully hidden by it.
+ */
+static int find_opaque_fullscreen_image(const RDrawData* data, Ruint* first_instance)
+{
+    Ruint command_index;
+    int found = 0;
+    for (command_index = 0; command_index < data->command_count; ++command_index) {
+        const RDrawCommand* command = &data->commands[command_index];
+        const raven_esp_texture_t* texture = find_texture(command->texture);
+        Ruint instance_index;
+        if (command->type != R_DRAW_INSTANCES || !texture || !texture->opaque) continue;
+        for (instance_index = command->first_instance;
+             instance_index < command->first_instance + command->instance_count &&
+             instance_index < data->instance_count; ++instance_index) {
+            const RDrawInstance* instance = &data->instances[instance_index];
+            if ((instance->flags & (R_PRIM_MASK | R_INSTANCE_TEXTURED)) !=
+                    (R_PRIM_RECT | R_INSTANCE_TEXTURED) ||
+                (instance->color >> 24) != 0xff || instance->border_width != 0.0f ||
+                instance->radii[0] != 0.0f || instance->radii[1] != 0.0f ||
+                instance->radii[2] != 0.0f || instance->radii[3] != 0.0f ||
+                instance->rect[0] > 0.0f || instance->rect[1] > 0.0f ||
+                instance->rect[2] < (float)data->framebuffer_width ||
+                instance->rect[3] < (float)data->framebuffer_height ||
+                instance->clip[0] > 0.0f || instance->clip[1] > 0.0f ||
+                instance->clip[2] < (float)data->framebuffer_width ||
+                instance->clip[3] < (float)data->framebuffer_height) continue;
+            *first_instance = instance_index;
+            found = 1;
+        }
+    }
+    return found;
 }
 
 static void backend_render_frame(const RDrawData* data, RCapture* capture)
 {
     raven_esp_rect_t dirty[RAVEN_ESP_DIRTY_MAX];
     Ruint i, shared_count;
+    Ruint opaque_frame_start = 0;
     int dirty_count = 0;
     int full_redraw = 0;
+    int replace_full_frame = 0;
     uint16_t clear_color;
     uint8_t r = (uint8_t)(fminf(1.0f, fmaxf(0.0f, data->clear_color[0])) * 255.0f);
     uint8_t g = (uint8_t)(fminf(1.0f, fmaxf(0.0f, data->clear_color[1])) * 255.0f);
@@ -494,6 +552,7 @@ static void backend_render_frame(const RDrawData* data, RCapture* capture)
     if (full_redraw) {
         dirty[0] = (raven_esp_rect_t){0, 0, 800, 480};
         dirty_count = 1;
+        replace_full_frame = find_opaque_fullscreen_image(data, &opaque_frame_start);
     }
     for (i = 0; i < (Ruint)dirty_count; ++i) {
         const size_t first_byte = (size_t)dirty[i].y0 * data->framebuffer_width * sizeof(*s_backend.framebuffer);
@@ -501,8 +560,9 @@ static void backend_render_frame(const RDrawData* data, RCapture* capture)
         /* Do not change the one framebuffer while the panel is actively
          * scanning it.  Small damage regions fit in the RGB blank interval. */
         (void)raven_display_wait_for_vblank();
-        clear_damage(s_backend.framebuffer, data, &dirty[i], clear_color);
-        render_damage(s_backend.framebuffer, data, &dirty[i]);
+        if (!replace_full_frame) clear_damage(s_backend.framebuffer, data, &dirty[i], clear_color);
+        render_damage(s_backend.framebuffer, data, &dirty[i],
+                      replace_full_frame ? opaque_frame_start : 0);
         /* The RGB panel streams this PSRAM framebuffer continuously.  Sync
          * the changed scanlines only; unlike draw_bitmap(), this does not
          * relink the active LCD DMA chain while the panel is scanning it. */
