@@ -176,7 +176,14 @@ static void raven_wifi_scan_task(void* user_data)
     vTaskDelete(NULL);
 }
 
-/** @brief Produce a conservative, root-level FAT filename from URL input. */
+/**
+ * @brief Validate and URL-decode a normal root-level FAT filename.
+ *
+ * Browsers preserve spaces, parentheses, and apostrophes in a selected file's
+ * name (or encode them in the upload URL).  These are valid FAT long-file-name
+ * characters, so accept them while still rejecting paths, control characters,
+ * and shell-like punctuation that is not needed by this LAN file manager.
+ */
 static int raven_wifi_decode_name(const char* encoded, char output[RAVEN_WIFI_NAME_SIZE])
 {
     size_t in = 0;
@@ -194,7 +201,9 @@ static int raven_wifi_decode_name(const char* encoded, char output[RAVEN_WIFI_NA
             value = (unsigned char)((high << 4) | low);
             in += 2U;
         }
-        if (!(isalnum(value) || value == '.' || value == '_' || value == '-')) return 0;
+        if (!(isalnum(value) || value == ' ' || value == '.' || value == '_' ||
+              value == '-' || value == '(' || value == ')' || value == '[' ||
+              value == ']' || value == '\'' || value == '!' || value == '~')) return 0;
         output[out++] = (char)value;
     }
     if (encoded[in] || out == 0U || output[0] == '.') return 0;
