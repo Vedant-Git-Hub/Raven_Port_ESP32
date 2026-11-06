@@ -12,7 +12,7 @@ source files or ESP-IDF components.
 
 | File | Responsibility | Change for another platform |
 | --- | --- | --- |
-| `raven_display.c` | RGB panel timings/pins, backlight, GT911 I2C, vblank wait | Replace with the target display/touch driver and native framebuffer access. |
+| `raven_display.c` | RGB panel timings/pins, backlight, GT911 I2C/GPIO38 interrupt, vblank wait | Replace with the target display/touch driver and native framebuffer access. |
 | `raven_sd.c` | Onboard SPI microSD mount, FAT scan, and PSRAM file reads | Change the SPI pins/host or replace it with the target removable-media driver. |
 | `raven_wifi.c` | ESP-IDF Wi-Fi station, LAN HTTP server, and synchronized SD-card operations | Replace with the target network stack or keep the same HTTP API on a Wi-Fi-capable ESP-IDF target. |
 | `raven_esp_backend.c` | Raven `RBackendVTable`, RGB565 rendering, texture allocation, dirty regions | Retain for an RGB565 CPU framebuffer, or implement the same Raven backend vtable with the target GPU/DMA engine. |
@@ -27,15 +27,17 @@ source files or ESP-IDF components.
 
 `raven_display.c` carries the verified Elecrow 7-inch HMI configuration:
 
-- RGB565, 800×480, one PSRAM scanout buffer
+- RGB565, 800×480, two PSRAM framebuffers: one scanout buffer and one Raven
+  back buffer
 - 10 MHz pixel clock and the configured RGB timing porches/polarities
 - GPIO 2 backlight enable
 - GT911 on I2C0: SDA GPIO 19, SCL GPIO 20, 400 kHz
 - MicroSD over SPI2: CS GPIO 10, MOSI GPIO 11, SCK GPIO 12, MISO GPIO 13
 
-Keep the one-buffer model unless the replacement panel driver guarantees safe
-multi-buffer synchronization. The renderer waits for vertical blank and
-updates dirty geometry to reduce visible tearing/flicker.
+The renderer paints into the inactive framebuffer, then hands that complete
+buffer to the ESP-IDF RGB driver for a frame-boundary DMA switch. Keep this
+front/back-buffer handoff on an equivalent target; a single scanout buffer can
+show top-to-bottom tearing during full-screen layout changes.
 
 ## Image decoding and full-screen slideshow
 
@@ -55,8 +57,8 @@ when none is selected), temporarily collapses the gallery widget and shows
 only an `Image` widget stretched to the panel bounds, then restores the gallery
 after the final file. No display timing or touch path changes are made during
 playback. The backend explicitly enters slideshow mode, detects the
-full-screen image, and paints it directly over the existing framebuffer rather
-than clearing the single scanout buffer first; this prevents a black flash
+full-screen image, and paints it directly into the inactive framebuffer rather
+than clearing the visible scanout buffer first; this prevents a black flash
 between slideshow images without changing Raven's architecture. Opaque images
 larger than 256×256 are stored by the backend as RGB565 (768 KB at 800×480)
 rather than Raven's source RGBA8 representation (1.536 MB). The gallery also

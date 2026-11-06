@@ -21,11 +21,10 @@ static QueueHandle_t s_touch_events;
 static TaskHandle_t s_application_task;
 
 /**
- * @brief Poll GT911 promptly and wake Raven whenever a meaningful point changes.
+ * @brief Read GT911 after its GPIO38 interrupt and wake Raven on changes.
  *
- * This HMI does not expose a reliable MCU interrupt line for GT911: GPIO38 is
- * part of its reset/address path. A 5 ms poll therefore provides predictable
- * input without reconfiguring that board-critical pin.
+ * The display port owns the ISR and only wakes this task from it. I2C transfers
+ * stay in task context, so touch input cannot block an interrupt handler.
  */
 static void touch_task(void* user_data)
 {
@@ -36,6 +35,7 @@ static void touch_task(void* user_data)
     (void)user_data;
 
     for (;;) {
+        raven_touch_wait_for_interrupt();
         raven_touch_poll(&event.pressed, &event.x, &event.y);
         if (event.pressed != previous_pressed ||
             (event.pressed && (abs(event.x - previous_x) >= 4 ||
@@ -47,7 +47,6 @@ static void touch_task(void* user_data)
                 if (s_application_task) xTaskNotifyGive(s_application_task);
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
 

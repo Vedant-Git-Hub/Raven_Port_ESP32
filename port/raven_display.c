@@ -21,6 +21,7 @@ static esp_lcd_panel_handle_t s_panel;
 static esp_lcd_touch_handle_t s_touch;
 static esp_lcd_panel_io_handle_t s_touch_io;
 static SemaphoreHandle_t s_vblank;
+static SemaphoreHandle_t s_touch_interrupt;
 
 /* The RGB driver calls this from its DMA ISR immediately after it has sent a
  * frame.  The following front porch/VSYNC/back porch is the safest short
@@ -37,13 +38,23 @@ static bool IRAM_ATTR raven_display_frame_complete(esp_lcd_panel_handle_t panel,
     return task_woken == pdTRUE;
 }
 
+/** @brief Wake the touch task from the active-low GT911 GPIO38 interrupt. */
+static void IRAM_ATTR raven_display_touch_interrupt(esp_lcd_touch_handle_t touch)
+{
+    BaseType_t task_woken = pdFALSE;
+
+    (void)touch;
+    if (s_touch_interrupt) xSemaphoreGiveFromISR(s_touch_interrupt, &task_woken);
+    if (task_woken == pdTRUE) portYIELD_FROM_ISR();
+}
+
 void raven_display_init(void)
 {
     const esp_lcd_rgb_panel_config_t panel_config = {
         .clk_src = LCD_CLK_SRC_DEFAULT,
         .data_width = 16,
-        /* Baseline that renders the Raven hello screen on this board. */
-        .num_fbs = 1,
+        /* One scanout frame plus one Raven back buffer in the 8 MB PSRAM. */
+        .num_fbs = 2,
         .psram_trans_align = 64,
         .hsync_gpio_num = 39,
         .vsync_gpio_num = 40,
@@ -85,9 +96,10 @@ void raven_display_init(void)
         .x_max = RAVEN_DISPLAY_WIDTH,
         .y_max = RAVEN_DISPLAY_HEIGHT,
         .rst_gpio_num = -1,
-        .int_gpio_num = -1,
+        .int_gpio_num = GPIO_NUM_38,
         .levels = {.reset = 0, .interrupt = 0},
         .flags = {.swap_xy = 0, .mirror_x = 0, .mirror_y = 0},
+        .interrupt_callback = raven_display_touch_interrupt,
         .driver_data = (void*)&gt911_config,
     };
 
@@ -98,6 +110,8 @@ void raven_display_init(void)
     ESP_ERROR_CHECK(esp_lcd_panel_init(s_panel));
     s_vblank = xSemaphoreCreateBinary();
     ESP_ERROR_CHECK(s_vblank ? ESP_OK : ESP_ERR_NO_MEM);
+    s_touch_interrupt = xSemaphoreCreateBinary();
+    ESP_ERROR_CHECK(s_touch_interrupt ? ESP_OK : ESP_ERR_NO_MEM);
     {
         const esp_lcd_rgb_panel_event_callbacks_t callbacks = {
             .on_frame_buf_complete = raven_display_frame_complete,
@@ -124,6 +138,11 @@ int raven_display_wait_for_vblank(void)
     while (xSemaphoreTake(s_vblank, 0) == pdTRUE) {
     }
     return xSemaphoreTake(s_vblank, pdMS_TO_TICKS(100)) == pdTRUE;
+}
+
+void raven_touch_wait_for_interrupt(void)
+{
+    if (s_touch_interrupt) xSemaphoreTake(s_touch_interrupt, portMAX_DELAY);
 }
 
 void raven_touch_poll(int* pressed, int* x, int* y)

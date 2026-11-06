@@ -487,6 +487,25 @@ static void gallery_connect_widgets(void)
     }
 }
 
+/**
+ * @brief Return whether a point belongs to the list that is visible now.
+ *
+ * List views retain their normal down/move/up sequence so a finger can still
+ * select an item or drag to scroll.  All other controls can be activated on
+ * the initial touch-down event.
+ */
+static int touch_hits_active_list(int x, int y)
+{
+    /* These bounds are deliberately the enclosing Borders from gallery.xml,
+     * rather than ListView's changing content rectangle.  Raven may move the
+     * internal content while a list scrolls; using that rectangle to decide
+     * whether to synthesize a click can prematurely finish a drag. */
+    if (Rwidget_get_visibility(app.gallery) == R_VISIBLE) {
+        return x >= 18 && x < 260 && y >= 92 && y < 355;
+    }
+    return x >= 18 && x < 782 && y >= 68 && y < 176;
+}
+
 void raven_application_task(void* user_data)
 {
     RHostPlatformDesc host = {0};
@@ -499,6 +518,7 @@ void raven_application_task(void* user_data)
     QueueHandle_t touch_events = (QueueHandle_t)user_data;
     int tap_pending = 0;
     int touch_dragging = 0;
+    int immediate_action_pending_release = 0;
     int touch_start_x = 0;
     int touch_start_y = 0;
 
@@ -550,6 +570,13 @@ void raven_application_task(void* user_data)
             gallery_advance_slideshow();
         }
         while (xQueueReceive(touch_events, &event, 0) == pdPASS) {
+            /* An immediate action already received its synthetic click.  Do
+             * not treat a later move or lift of the same finger as another
+             * tap, especially if that action changed screens. */
+            if (immediate_action_pending_release) {
+                if (!event.pressed) immediate_action_pending_release = 0;
+                continue;
+            }
             if (app.fullscreen_touch_pending_release) {
                 if (!event.pressed) {
                     app.fullscreen_touch_pending_release = 0;
@@ -572,6 +599,21 @@ void raven_application_task(void* user_data)
                     touch_dragging = 0;
                     touch_start_x = event.x;
                     touch_start_y = event.y;
+                    if (!touch_hits_active_list(event.x, event.y)) {
+                        /* Raven button callbacks are click/release based.
+                         * Complete a synthetic click now, at touch-down, so
+                         * application actions do not wait for the finger to
+                         * leave the panel. */
+                        Rhost_inject_mouse_move(app.window, event.x, event.y, 0);
+                        Rhost_inject_mouse_button(app.window, event.x, event.y,
+                                                  R_MOUSE_LEFT, 1, 0);
+                        Rhost_inject_mouse_button(app.window, event.x, event.y,
+                                                  R_MOUSE_LEFT, 0, 0);
+                        tap_pending = 0;
+                        immediate_action_pending_release = 1;
+                        visual_touch_event = 1;
+                        continue;
+                    }
                 } else if (!touch_dragging &&
                            (abs(event.x - touch_start_x) >= 12 ||
                             abs(event.y - touch_start_y) >= 12)) {

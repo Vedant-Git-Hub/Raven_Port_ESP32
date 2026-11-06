@@ -42,7 +42,9 @@ typedef struct raven_esp_texture_t {
 
 static struct {
     esp_lcd_panel_handle_t panel;
+    uint16_t* frontbuffer;
     uint16_t* framebuffer;
+    uint16_t* framebuffers[2];
     raven_esp_texture_t textures[RAVEN_ESP_MAX_TEXTURES];
     RDrawInstance* previous_instances;
     RDrawCommand* previous_commands;
@@ -53,6 +55,7 @@ static struct {
     uint16_t previous_clear_color;
     int frame_valid;
     int slideshow_mode;
+    int double_buffered;
 } s_backend;
 
 static const char* TAG = "raven_backend";
@@ -605,13 +608,37 @@ static void backend_render_frame(const RDrawData* data, RCapture* capture)
         if (s_backend.slideshow_mode && !replace_full_frame) {
             ESP_LOGW(TAG, "slideshow frame lacks a full-screen image; using normal redraw");
         }
+    } else if (dirty_count > 1) {
+        raven_esp_rect_t combined = dirty[0];
+
+        /* A single RGB framebuffer is scanned continuously.  Committing
+         * independent regions one per VSYNC exposes intermediate layouts
+         * during screen changes (for example Gallery -> Wi-Fi).  Paint their
+         * union in one commit instead, so the panel never presents those
+         * partial layouts as separate top-to-bottom sweeps. */
+        for (i = 1; i < (Ruint)dirty_count; ++i) {
+            if (dirty[i].x0 < combined.x0) combined.x0 = dirty[i].x0;
+            if (dirty[i].y0 < combined.y0) combined.y0 = dirty[i].y0;
+            if (dirty[i].x1 > combined.x1) combined.x1 = dirty[i].x1;
+            if (dirty[i].y1 > combined.y1) combined.y1 = dirty[i].y1;
+        }
+        dirty[0] = combined;
+        dirty_count = 1;
+    }
+    /* Render a partial update into the non-scanning frame buffer.  It begins
+     * as an exact copy of the displayed frame, then only the damaged pixels
+     * need repainting.  Full redraws overwrite every pixel and skip the copy. */
+    if (s_backend.double_buffered && dirty_count && !full_redraw && !replace_full_frame) {
+        memcpy(s_backend.framebuffer, s_backend.frontbuffer,
+               (size_t)data->framebuffer_width * data->framebuffer_height * sizeof(*s_backend.framebuffer));
     }
     for (i = 0; i < (Ruint)dirty_count; ++i) {
         const size_t first_byte = (size_t)dirty[i].y0 * data->framebuffer_width * sizeof(*s_backend.framebuffer);
         const size_t byte_count = (size_t)(dirty[i].y1 - dirty[i].y0) * data->framebuffer_width * sizeof(*s_backend.framebuffer);
-        /* Do not change the one framebuffer while the panel is actively
-         * scanning it.  Small damage regions fit in the RGB blank interval. */
-        (void)raven_display_wait_for_vblank();
+        /* In single-buffer mode the panel may be scanning this memory, so
+         * begin small writes at a fresh vertical blank.  Double-buffer mode
+         * writes only the off-screen target and needs no such restriction. */
+        if (!s_backend.double_buffered) (void)raven_display_wait_for_vblank();
         if (!replace_full_frame) clear_damage(s_backend.framebuffer, data, &dirty[i], clear_color);
         render_damage(s_backend.framebuffer, data, &dirty[i],
                       replace_full_frame ? opaque_frame_start : 0);
@@ -620,6 +647,17 @@ static void backend_render_frame(const RDrawData* data, RCapture* capture)
          * relink the active LCD DMA chain while the panel is scanning it. */
         ESP_ERROR_CHECK(esp_cache_msync((uint8_t*)s_backend.framebuffer + first_byte, byte_count,
                                         ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_UNALIGNED));
+    }
+    if (s_backend.double_buffered && dirty_count) {
+        /* Point the RGB driver's DMA chain at the complete off-screen frame.
+         * The driver changes buffers at a frame boundary, which prevents the
+         * top-to-bottom tear of a screen-sized Raven layout change. */
+        ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(s_backend.panel, 0, 0,
+                                                   data->framebuffer_width, data->framebuffer_height,
+                                                   s_backend.framebuffer));
+        s_backend.frontbuffer = s_backend.framebuffer;
+        s_backend.framebuffer = s_backend.frontbuffer == s_backend.framebuffers[0] ?
+            s_backend.framebuffers[1] : s_backend.framebuffers[0];
     }
     if (capture) {
         capture->pixels = NULL;
@@ -637,9 +675,14 @@ static void backend_wait_idle(void)
 void raven_esp_backend_set_panel(esp_lcd_panel_handle_t panel)
 {
     void* framebuffer0 = NULL;
+    void* framebuffer1 = NULL;
     s_backend.panel = panel;
-    ESP_ERROR_CHECK(esp_lcd_rgb_panel_get_frame_buffer(panel, 1, &framebuffer0));
-    s_backend.framebuffer = framebuffer0;
+    ESP_ERROR_CHECK(esp_lcd_rgb_panel_get_frame_buffer(panel, 2, &framebuffer0, &framebuffer1));
+    s_backend.framebuffers[0] = framebuffer0;
+    s_backend.framebuffers[1] = framebuffer1;
+    s_backend.frontbuffer = framebuffer0;
+    s_backend.framebuffer = framebuffer1;
+    s_backend.double_buffered = 1;
 }
 
 void raven_esp_backend_set_slideshow_mode(int enabled)

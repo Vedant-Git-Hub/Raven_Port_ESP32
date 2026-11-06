@@ -14,9 +14,11 @@ esp_lcd_panel_handle_t raven_display_panel(void);
 /** @brief Wait for a fresh vertical blank interval; returns non-zero on success. */
 int raven_display_wait_for_vblank(void);
 /**
- * @brief Poll the GT911 controller and return its primary contact.
+ * @brief Wait until the GT911 asserts its GPIO38 interrupt line.
  *
- * GPIO38 is reserved for the board's GT911 reset/address path, not used as an
- * ESP32 interrupt input by this port.
+ * The caller reads the I2C controller after this returns; it must never read
+ * I2C directly from interrupt context.
  */
+void raven_touch_wait_for_interrupt(void);
+/** @brief Read the GT911 controller and return its primary contact. */
 void raven_touch_poll(int* pressed, int* x, int* y);

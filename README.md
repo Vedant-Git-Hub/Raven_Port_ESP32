@@ -7,9 +7,9 @@ gallery: select an image from the card's file list, preview it directly on the
 panel, play the library as a full-screen slideshow, or manage the SD card over
 the HMI's Wi-Fi connection from a browser.
 
-The port uses an RGB565 software renderer that writes into the RGB panel's
-PSRAM framebuffer. GT911 touch is normalized into Raven mouse events. Raven
-renders on CPU1; the low-priority touch task runs on CPU0.
+The port uses an RGB565 software renderer with front/back PSRAM framebuffers.
+GT911 touch is normalized into Raven mouse events through GPIO38. Raven
+renders on CPU1 while the interrupt-driven touch task runs on CPU0.
 
 ## Repository layout
 
