@@ -553,7 +553,7 @@ void raven_application_task(void* user_data)
     Rwindow_show(app.window);
 
     ESP_LOGI(TAG, "Raven SD gallery running on CPU1");
-    while (Rdraw_frame()) {
+    for (;;) {
         raven_touch_event_t event;
         int visual_touch_event = 0;
         wifi_sync_status();
@@ -647,6 +647,11 @@ void raven_application_task(void* user_data)
                 visual_touch_event = 1;
             }
         }
+        /* Draw only after consuming the current input batch.  Previously the
+         * loop drew an old frame before it inspected a newly queued GPIO38
+         * event, adding a whole Raven frame to every touch response. */
+        if (!Rdraw_frame()) break;
+
         /* Preserve the stable 10 FPS idle cadence, but render the next frame
          * immediately after a touch. The input task also wakes this task from
          * the idle wait, removing the former 100 ms response penalty. */

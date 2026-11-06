@@ -20,6 +20,15 @@ static const char* TAG = "raven_main";
 static QueueHandle_t s_touch_events;
 static TaskHandle_t s_application_task;
 
+/* GPIO38 only wakes this task when GT911 has new data.  Keep it just below
+ * ESP-IDF's Wi-Fi task: the brief I2C transaction should preempt ordinary
+ * work, without starving the networking stack. */
+#define RAVEN_TOUCH_TASK_PRIORITY 22
+
+/* Raven's renderer is isolated on CPU1, so it can prepare the next display
+ * buffer promptly after the input task signals a user action. */
+#define RAVEN_APPLICATION_TASK_PRIORITY 8
+
 /**
  * @brief Read GT911 after its GPIO38 interrupt and wake Raven on changes.
  *
@@ -62,9 +71,10 @@ void app_main(void)
         return;
     }
     if (xTaskCreatePinnedToCore(raven_application_task, "raven_studio", 16384,
-                                s_touch_events, 5, &s_application_task, 1) != pdPASS ||
+                                s_touch_events, RAVEN_APPLICATION_TASK_PRIORITY,
+                                &s_application_task, 1) != pdPASS ||
         xTaskCreatePinnedToCore(touch_task, "touch_poll", 4096,
-                                NULL, 6, NULL, 0) != pdPASS) {
+                                NULL, RAVEN_TOUCH_TASK_PRIORITY, NULL, 0) != pdPASS) {
         ESP_LOGE(TAG, "unable to start Studio tasks");
         return;
     }
