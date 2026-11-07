@@ -68,7 +68,9 @@ The built application is `build/raven_hello.bin`.
 The project uses the HMI's full 4 MB flash configuration. Its factory-app
 partition is 0x3F0000 bytes (just under 4 MB); PSRAM is configured at the
 stable 80 MHz rate and the 8 MB device is added to the ESP-IDF heap at boot.
-The `stable_v1.0` tag marks this known-good configuration.
+The `stable_v1.0` tag marks the original known-good memory configuration.
+`stable_v4.0` marks the current validated gallery release, including the
+continuous slideshow, browser-side converter, and LAN-only mDNS address.
 
 ## Browser image converter
 
@@ -82,6 +84,11 @@ only the final uncompressed 24-bit BMP is sent to the HMI.
 preserves all content and adds the gallery's dark letterbox background. The
 orientation selector first respects the source's automatic EXIF orientation,
 then can apply 90° clockwise, 180°, or 90° counter-clockwise rotation.
+
+On current Chrome and Edge browsers, the tested input formats are JPEG/JPG,
+PNG, WebP, GIF (its first frame), and AVIF. SVG may work where the host browser
+can rasterize it; TIFF and HEIC should be converted before use. Regardless of
+the source, the uploaded result is always an uncompressed 24-bit 800×480 BMP.
 
 ## SD gallery application
 

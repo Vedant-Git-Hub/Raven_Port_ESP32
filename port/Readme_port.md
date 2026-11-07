@@ -89,6 +89,11 @@ uncompressed 24-bit 800×480 BMP. A successful browser-side mutation raises a
 small flag; the application consumes it on its rendering task and rescans the
 gallery, so no Raven widget is touched from the HTTP worker context.
 
+The conversion page relies on the host browser decoder rather than an ESP32
+decoder. Chrome and Edge have been tested with JPEG/JPG, PNG, WebP, GIF (first
+frame), and AVIF input. Its output contract remains one uncompressed 24-bit
+800×480 BMP per upload.
+
 ## Porting checklist
 
 1. Configure the display resolution and pixel format in `raven_display.h`.
