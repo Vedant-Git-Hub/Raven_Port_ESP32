@@ -79,9 +79,11 @@ private network.
 
 The HTTP worker and Raven task share FATFS through the recursive mutex exposed
 by `raven_sd.c`. Uploads and copies use temporary files, then rename them only
-after completion. A successful browser-side mutation raises a small flag; the
-application consumes it on its rendering task and rescans the gallery, so no
-Raven widget is touched from the HTTP worker context.
+after completion. The embedded browser page performs its optional image
+conversion on the host computer with Canvas API, then uploads only the final
+uncompressed 24-bit 800×480 BMP. A successful browser-side mutation raises a
+small flag; the application consumes it on its rendering task and rescans the
+gallery, so no Raven widget is touched from the HTTP worker context.
 
 ## Porting checklist
 

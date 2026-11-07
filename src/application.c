@@ -308,11 +308,12 @@ static void gallery_stop_slideshow(const char* message)
 /** @brief Advance the player after the current image's three-second hold. */
 static void gallery_advance_slideshow(void)
 {
-    if (!app.slideshow_active || app.slideshow_index >= app.slideshow_last_index) {
-        gallery_stop_slideshow("Slideshow complete. Back in the image library.");
-        return;
-    }
-    ++app.slideshow_index;
+    if (!app.slideshow_active) return;
+    /* Playback begins at the selected image, completes the remaining files,
+     * then continuously wraps to the first card image until the user touches
+     * the display. */
+    if (app.slideshow_index >= app.slideshow_last_index) app.slideshow_index = 0;
+    else ++app.slideshow_index;
     if (!gallery_show_image(app.slideshow_index)) {
         gallery_stop_slideshow("Slideshow stopped because an image could not be loaded.");
         return;

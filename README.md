@@ -70,33 +70,18 @@ partition is 0x3F0000 bytes (just under 4 MB); PSRAM is configured at the
 stable 80 MHz rate and the 8 MB device is added to the ESP-IDF heap at boot.
 The `stable_v1.0` tag marks this known-good configuration.
 
-## Desktop image converter
+## Browser image converter
 
-`image_converter.py` is a small Python desktop screen for preparing gallery
-images before copying them to the microSD card. It accepts common image formats
-supported by Pillow (JPEG, PNG, WebP, TIFF, GIF, BMP, and more), applies EXIF
-orientation, flattens transparency, resizes to the HMI's exact 800×480 panel,
-and writes an uncompressed 24-bit BMP.
+The built-in Wi-Fi SD manager includes the image converter; no Python tool or
+desktop dependency is required. Select any image supported by the host browser,
+choose the resize and orientation settings, inspect the live 800×480 preview,
+then choose **Convert & Upload**. Conversion happens on the host computer and
+only the final uncompressed 24-bit BMP is sent to the HMI.
 
-Install the one dependency and open the converter:
-
-```bash
-python3 -m pip install -r requirements.txt
-python3 image_converter.py
-```
-
-Choose a source image and destination path in the screen. **Fill display**
-preserves aspect ratio and center-crops; **Fit entire image** preserves all
-content and places dark bars where needed. The **Orientation** selector
-automatically honors the source EXIF orientation and can also rotate it 90°
-clockwise, 180°, or 90° counter-clockwise. The live preview shows the exact
-800×480 result.
-
-The same tool also works from a terminal:
-
-```bash
-python3 image_converter.py --input /path/photo.jpg --output /path/gallery_photo.bmp --mode crop --rotate 90
-```
+**Fill display** preserves aspect ratio and centre-crops. **Fit entire image**
+preserves all content and adds the gallery's dark letterbox background. The
+orientation selector first respects the source's automatic EXIF orientation,
+then can apply 90° clockwise, 180°, or 90° counter-clockwise rotation.
 
 ## SD gallery application
 
@@ -114,9 +99,9 @@ Copy images to the card root, insert it before boot or use **Rescan**, then:
    touch anywhere on the display to return to the library.
 3. Tap **Play slideshow** to display the selected image (or the first image
    when none is selected) across the complete panel. Each image remains on
-   screen for three seconds. After the final image, the application returns to
-   the gallery and leaves that last image in the preview. Touching anywhere
-   during a slideshow stops it immediately and returns to the gallery.
+   screen for three seconds. After the final image, playback loops from the
+   first image continuously. Touching anywhere during a slideshow stops it
+   immediately and returns to the gallery.
 4. Use **Rescan** after inserting or replacing a card; it remounts the card
    and rebuilds the list.
 
@@ -161,15 +146,21 @@ http://192.168.1.42
 
 The compact built-in page lists regular files in the SD-card root and supports:
 
-- Uploading files from the computer (up to 4 MB per transfer), with a live
-  progress bar and a clear completed or failed transfer message
+- Uploading ready-to-display BMP files from the computer (up to 4 MB per
+  transfer), with a live progress bar and a clear completed or failed transfer
+  message
+- Converting browser-supported image files on the computer itself, then
+  viewing an exact 800×480 preview, selecting Fill/Fit resize behavior and
+  rotation, then uploading only the final uncompressed 24-bit BMP. The browser
+  uses host-PC resources, so ESP32 PSRAM is not used for conversion and the
+  source image is never copied to the SD card.
 - Downloading, copying, renaming/moving, and deleting root-level files
 - Automatic refresh of the HMI image list after a browser-side change
 
 Gallery images remain subject to the 24-bit, 800×480 BMP requirements above.
-For safety, browser-created names are limited to letters, numbers, `.`, `_`,
-and `-`, up to 95 characters; use simple root-level names such as
-`sunset_01.bmp`. The HTTP manager
+For safety, browser-created names are limited to ordinary root-level FAT names
+(letters, numbers, spaces, `.`, `_`, `-`, parentheses, brackets, apostrophes,
+`!`, and `~`), up to 79 characters. The HTTP manager
 has no login or TLS to keep the firmware compact, so use it only on a trusted
 private LAN and never expose the HMI to the public internet.
 
