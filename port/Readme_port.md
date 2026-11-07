@@ -14,7 +14,7 @@ source files or ESP-IDF components.
 | --- | --- | --- |
 | `raven_display.c` | RGB panel timings/pins, backlight, GT911 I2C/GPIO38 interrupt, vblank wait | Replace with the target display/touch driver and native framebuffer access. |
 | `raven_sd.c` | Onboard SPI microSD mount, FAT scan, and PSRAM file reads | Change the SPI pins/host or replace it with the target removable-media driver. |
-| `raven_wifi.c` | ESP-IDF Wi-Fi station, LAN HTTP server, and synchronized SD-card operations | Replace with the target network stack or keep the same HTTP API on a Wi-Fi-capable ESP-IDF target. |
+| `raven_wifi.c` | ESP-IDF Wi-Fi station, mDNS LAN hostname, HTTP server, and synchronized SD-card operations | Replace with the target network stack or keep the same HTTP/mDNS API on a Wi-Fi-capable ESP-IDF target. |
 | `raven_esp_backend.c` | Raven `RBackendVTable`, RGB565 rendering, texture allocation, dirty regions | Retain for an RGB565 CPU framebuffer, or implement the same Raven backend vtable with the target GPU/DMA engine. |
 | `raven_esp_thread.c` | Raven thread/mutex/clock services | Map these functions to the target RTOS or threading system. |
 | `raven_esp_fs.c` | Filesystem, paths, URLs, and file chooser fallbacks | Keep stubs for immutable firmware, or connect LittleFS/FATFS as required. |
@@ -76,6 +76,10 @@ boot. The service is
 intentionally LAN-only and unauthenticated;
 add authentication and TLS before exposing an equivalent port outside a trusted
 private network.
+
+After DHCP, `raven_wifi.c` advertises `vedantsravengallary.local` through
+mDNS as an HTTP service on port 80. This local hostname follows DHCP address
+changes without registering or exposing a public domain.
 
 The HTTP worker and Raven task share FATFS through the recursive mutex exposed
 by `raven_sd.c`. Uploads and copies use temporary files, then rename them only

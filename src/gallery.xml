@@ -140,7 +140,7 @@
             <Border Background="#00C853" CornerRadius="8" Slot.Fill="1">
                 <Button Name="wifi_connect" Text="Connect and start SD manager" Style="Flat"/>
             </Border>
-            <Label Text="After connecting, type the IP address above into your computer browser." TextSize="10" Color="#00BFA5" Width="290" Wrap="true" Slot.VAlign="Center"/>
+            <Label Text="After connecting, open vedantsravengallary.local on your computer browser." TextSize="10" Color="#00BFA5" Width="290" Wrap="true" Slot.VAlign="Center"/>
         </HBox>
         <Label Text="Wi-Fi stays active when you return to the gallery. Browser uploads refresh the image list automatically." TextSize="10" Color="#FFFFFF" Slot.VAlign="Center"/>
     </VBox>

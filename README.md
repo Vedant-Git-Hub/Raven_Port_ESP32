@@ -137,12 +137,17 @@ manager**. Tap **Scan** to refresh the list. The password is masked on screen.
 Credentials are retained in ESP-IDF Wi-Fi NVS and reconnect automatically
 after reset.
 
-Once DHCP completes, the screen shows an address such as `192.168.1.42`. On a
-computer connected to the same Wi-Fi network, open:
+Once DHCP completes, use this LAN-only address on a computer connected to the
+same Wi-Fi network:
 
 ```text
-http://192.168.1.42
+http://vedantsravengallary.local
 ```
+
+The HMI advertises this address with mDNS, so it follows DHCP IP-address
+changes automatically. It is not a public internet domain and works only on
+the local network. If a Linux computer cannot resolve `.local` names, install
+and enable its standard mDNS resolver (Avahi).
 
 The compact built-in page lists regular files in the SD-card root and supports:
 

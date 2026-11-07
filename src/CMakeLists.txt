@@ -40,7 +40,7 @@ idf_component_register(
     INCLUDE_DIRS "include" "../port/include" "${RAVEN_ROOT}/include"
     PRIV_INCLUDE_DIRS "${RAVEN_ROOT}/src" "${RAVEN_ROOT}/third_party"
     REQUIRES esp_lcd driver esp_timer esp_hw_support esp_mm fatfs sdmmc esp_driver_sdspi
-             esp_wifi esp_http_server esp_netif nvs_flash
+             esp_wifi esp_http_server esp_netif nvs_flash mdns
              espressif__esp_lcd_touch espressif__esp_lcd_touch_gt911)
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE

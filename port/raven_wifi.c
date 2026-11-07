@@ -20,6 +20,8 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 
+#include "mdns.h"
+
 #include <ctype.h>
 #include <dirent.h>
 #include <stdio.h>
@@ -29,6 +31,8 @@
 
 #define RAVEN_WIFI_MAX_UPLOAD_BYTES (4U * 1024U * 1024U)
 #define RAVEN_WIFI_NAME_SIZE 80
+#define RAVEN_MDNS_HOSTNAME "vedantsravengallary"
+#define RAVEN_MDNS_URL "http://vedantsravengallary.local"
 
 static const char* TAG = "raven_wifi";
 static SemaphoreHandle_t s_status_lock;
@@ -45,6 +49,7 @@ static int s_scan_was_connected;
 static char s_scan_ip[sizeof(s_status.ip)];
 static int s_initialized;
 static int s_media_changed;
+static int s_mdns_started;
 
 static void raven_wifi_set_status(raven_wifi_state_t state, const char* ip,
                                   const char* message);
@@ -540,6 +545,31 @@ static void raven_http_start(void)
     ESP_LOGI(TAG, "SD manager started on port 80");
 }
 
+/** @brief Advertise the LAN-only gallery address through multicast DNS. */
+static void raven_mdns_start(void)
+{
+    esp_err_t result;
+
+    if (s_mdns_started) return;
+    result = mdns_init();
+    if (result != ESP_OK) {
+        ESP_LOGW(TAG, "mDNS initialization failed: %s", esp_err_to_name(result));
+        return;
+    }
+    result = mdns_hostname_set(RAVEN_MDNS_HOSTNAME);
+    if (result == ESP_OK) result = mdns_instance_name_set("Vedant's Raven Gallery");
+    if (result == ESP_OK) {
+        result = mdns_service_add("Vedant's Raven Gallery", "_http", "_tcp", 80, NULL, 0);
+    }
+    if (result != ESP_OK) {
+        ESP_LOGW(TAG, "mDNS setup failed: %s", esp_err_to_name(result));
+        mdns_free();
+        return;
+    }
+    s_mdns_started = 1;
+    ESP_LOGI(TAG, "LAN address ready: %s", RAVEN_MDNS_URL);
+}
+
 /** @brief Translate Wi-Fi and DHCP notifications into UI-visible state. */
 static void raven_wifi_event(void* argument, esp_event_base_t event_base,
                              int32_t event_id, void* event_data)
@@ -556,7 +586,8 @@ static void raven_wifi_event(void* argument, esp_event_base_t event_base,
         char ip[16];
         char message[96];
         snprintf(ip, sizeof(ip), IPSTR, IP2STR(&got_ip->ip_info.ip));
-        snprintf(message, sizeof(message), "Connected. Open http://%s on your computer.", ip);
+        snprintf(message, sizeof(message), "Connected. Open %s on your computer.", RAVEN_MDNS_URL);
+        raven_mdns_start();
         raven_http_start();
         raven_wifi_set_status(RAVEN_WIFI_CONNECTED, ip, message);
         ESP_LOGI(TAG, "%s", message);
