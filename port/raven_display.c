@@ -55,6 +55,16 @@ void raven_display_init(void)
         .data_width = 16,
         /* One scanout frame plus one Raven back buffer in the 8 MB PSRAM. */
         .num_fbs = 2,
+        /*
+         * Stream PSRAM frames through two internal-RAM bounce buffers.  Apart
+         * from improving the DMA access pattern, this makes a framebuffer
+         * handoff take effect only after the current complete frame has been
+         * copied.  Without bounce buffers, ESP-IDF relinks the DMA source
+         * while it is streaming and a new framebuffer can begin partway
+         * through a scanned row, appearing as a strip wrapped from an edge.
+         * Ten complete scanlines divide the 800x480 frame exactly.
+         */
+        .bounce_buffer_size_px = RAVEN_DISPLAY_WIDTH * 10,
         .psram_trans_align = 64,
         .hsync_gpio_num = 39,
         .vsync_gpio_num = 40,
